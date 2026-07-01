@@ -10,8 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Bell, Play, DollarSign, AlertTriangle, CheckCircle2, Clock, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-
-const BACKEND_URL = 'https://s5ksm5ty.backend.blink.new'
+import { BACKEND_URL } from '@/lib/api'
 
 function useReminders() {
   return useQuery({

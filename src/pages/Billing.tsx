@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+} from "@/components/ui/dialog";
 import { CheckIcon, Loader2 } from "lucide-react";
 import { toast } from 'sonner';
+import { useBlinkAuth } from '@blinkdotnew/react';
+import { BACKEND_URL } from '@/lib/api';
 
 interface Price {
   id: string;
@@ -20,15 +25,20 @@ interface Product {
 }
 
 const BillingPage: React.FC = () => {
+  const { user } = useBlinkAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSubscribing, setIsSubscribing] = useState<boolean>(false);
+  const [subscribingPriceId, setSubscribingPriceId] = useState<string | null>(null);
+  const [customAction, setCustomAction] = useState<'invoice' | 'link' | null>(null);
+  const [customForm, setCustomForm] = useState({ description: '', amount: '' });
+  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch('/stripe/products-with-prices');
+        const response = await fetch(`${BACKEND_URL}/stripe/products-with-prices`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -44,44 +54,89 @@ const BillingPage: React.FC = () => {
     fetchProducts();
   }, []);
 
-  const handleSubscribe = async (priceId: string) => {
-    setIsSubscribing(true);
+  const handleSubscribe = async (priceId: string, interval: string) => {
+    setSubscribingPriceId(priceId);
     try {
-      // For demonstration, we'll create a dummy customer first.
-      // In a real app, the customer would likely be created during user signup or retrieved from your DB.
-      const customerResponse = await fetch('/stripe/create-customer', {
+      const res = await fetch(`${BACKEND_URL}/stripe/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', name: 'Test User' }), // Replace with actual user data
+        body: JSON.stringify({
+          priceId,
+          mode: 'subscription',
+          customerEmail: user?.email,
+          successUrl: `${window.location.origin}${window.location.pathname}?checkout=success`,
+          cancelUrl: `${window.location.origin}${window.location.pathname}?checkout=cancelled`,
+        }),
       });
-      const customerData = await customerResponse.json();
-      if (!customerResponse.ok) {
-        throw new Error(customerData.error || 'Failed to create customer');
-      }
-      const customerId = customerData.customerId;
-
-      const subscriptionResponse = await fetch('/stripe/create-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId, priceId }),
-      });
-      const subscriptionData = await subscriptionResponse.json();
-
-      if (!subscriptionResponse.ok) {
-        throw new Error(subscriptionData.error || 'Failed to create subscription');
-      }
-
-      toast.success('Subscription initiated! Please complete payment.');
-      // In a real scenario, you would redirect to Stripe Checkout or handle payment intent confirmation
-      console.log('Subscription created:', subscriptionData.subscriptionId);
-      console.log('Client Secret:', subscriptionData.clientSecret);
-
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start checkout');
+      window.location.href = data.url;
     } catch (e: any) {
-      setError(e.message);
       toast.error(`Subscription failed: ${e.message}`);
-    } finally {
-      setIsSubscribing(false);
+      setSubscribingPriceId(null);
     }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') === 'success') {
+      toast.success('Subscription active! Welcome aboard.');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('checkout') === 'cancelled') {
+      toast.info('Checkout cancelled.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const handleCustomSubmit = async () => {
+    const amountCents = Math.round(Number(customForm.amount) * 100);
+    if (!customForm.description || !amountCents || amountCents <= 0) {
+      toast.error('Enter a description and a valid amount');
+      return;
+    }
+    setIsSubmittingCustom(true);
+    try {
+      if (customAction === 'invoice') {
+        if (!user?.email) throw new Error('No authenticated email on file');
+        const customerRes = await fetch(`${BACKEND_URL}/stripe/create-customer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, name: user.email }),
+        });
+        const customerData = await customerRes.json();
+        if (!customerRes.ok) throw new Error(customerData.error || 'Failed to create customer');
+
+        const invoiceRes = await fetch(`${BACKEND_URL}/stripe/create-one-off-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customerId: customerData.customerId, amount: amountCents, description: customForm.description }),
+        });
+        const invoiceData = await invoiceRes.json();
+        if (!invoiceRes.ok) throw new Error(invoiceData.error || 'Failed to create invoice');
+        setResultUrl(invoiceData.hostedInvoiceUrl);
+        toast.success('Invoice created and finalized in Stripe');
+      } else {
+        const linkRes = await fetch(`${BACKEND_URL}/stripe/create-payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: amountCents, description: customForm.description }),
+        });
+        const linkData = await linkRes.json();
+        if (!linkRes.ok) throw new Error(linkData.error || 'Failed to create payment link');
+        setResultUrl(linkData.paymentLinkUrl);
+        toast.success('Payment link created');
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setIsSubmittingCustom(false);
+    }
+  };
+
+  const closeCustomDialog = () => {
+    setCustomAction(null);
+    setCustomForm({ description: '', amount: '' });
+    setResultUrl(null);
   };
 
   if (loading) return (
@@ -101,70 +156,72 @@ const BillingPage: React.FC = () => {
         Choose the perfect plan to scale your agent orchestration needs. Unlock advanced features and supercharge your agency's growth.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
-        {products.sort((a, b) => {
-          // Sort by price for better presentation (e.g., Starter, Pro, Enterprise)
-          const priceA = a.prices.find(p => p.recurring.interval === 'month')?.unit_amount || 999999;
-          const priceB = b.prices.find(p => p.recurring.interval === 'month')?.unit_amount || 999999;
-          return priceA - priceB;
-        }).map((product) => (
-          <Card 
-            key={product.id} 
-            className={`flex flex-col justify-between border-2 ${product.name === 'Pro' ? 'border-blue-500 shadow-lg shadow-blue-500/30' : 'border-gray-700'} hover:border-blue-400 transition-all duration-300 bg-gray-800 rounded-xl p-6`}
-          >
-            <CardHeader className="pb-4">
-              <CardTitle className="text-4xl font-bold text-center mb-2 bg-clip-text text-transparent bg-gradient-to-r from-teal-300 to-blue-400">
-                {product.name}
-              </CardTitle>
-              <CardDescription className="text-center text-gray-400 text-base leading-relaxed">
-                {product.description}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-grow flex flex-col items-center justify-center py-6">
-              {product.prices.map((price) => (
-                <div key={price.id} className="mb-4 w-full">
-                  <p className="text-5xl font-extrabold text-center mb-2">
-                    {price.unit_amount === 0 ? 'Custom' : `$${(price.unit_amount / 100).toFixed(0)}`}
-                    <span className="text-xl text-gray-400 font-medium">/{price.recurring.interval}</span>
-                  </p>
-                  <Button 
-                    onClick={() => handleSubscribe(price.id)}
-                    className={`w-full py-3 text-lg font-semibold rounded-lg transition-all duration-300 ${product.name === 'Pro' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}
-                    disabled={isSubscribing || (product.name === 'Enterprise/Business' && price.unit_amount === 0)}
-                  >
-                    {isSubscribing ? (
-                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    ) : (
-                      product.name === 'Enterprise/Business' && price.unit_amount === 0 ? 'Contact Sales' : `Select ${product.name} (${price.recurring.interval})`
+      {products.length === 0 ? (
+        <p className="text-center text-gray-500">No products configured in Stripe yet. Add products in your Stripe Dashboard to see plans here.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
+          {products.sort((a, b) => {
+            const priceA = a.prices.find(p => p.recurring.interval === 'month')?.unit_amount || 999999;
+            const priceB = b.prices.find(p => p.recurring.interval === 'month')?.unit_amount || 999999;
+            return priceA - priceB;
+          }).map((product) => (
+            <Card
+              key={product.id}
+              className={`flex flex-col justify-between border-2 ${product.name === 'Pro' ? 'border-blue-500 shadow-lg shadow-blue-500/30' : 'border-gray-700'} hover:border-blue-400 transition-all duration-300 bg-gray-800 rounded-xl p-6`}
+            >
+              <CardHeader className="pb-4">
+                <CardTitle className="text-4xl font-bold text-center mb-2 bg-clip-text text-transparent bg-gradient-to-r from-teal-300 to-blue-400">
+                  {product.name}
+                </CardTitle>
+                <CardDescription className="text-center text-gray-400 text-base leading-relaxed">
+                  {product.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex-grow flex flex-col items-center justify-center py-6">
+                {product.prices.map((price) => (
+                  <div key={price.id} className="mb-4 w-full">
+                    <p className="text-5xl font-extrabold text-center mb-2">
+                      {price.unit_amount === 0 ? 'Custom' : `$${(price.unit_amount / 100).toFixed(0)}`}
+                      <span className="text-xl text-gray-400 font-medium">/{price.recurring.interval}</span>
+                    </p>
+                    <Button
+                      onClick={() => handleSubscribe(price.id, price.recurring.interval)}
+                      className={`w-full py-3 text-lg font-semibold rounded-lg transition-all duration-300 ${product.name === 'Pro' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+                      disabled={subscribingPriceId === price.id || (product.name === 'Enterprise/Business' && price.unit_amount === 0)}
+                    >
+                      {subscribingPriceId === price.id ? (
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      ) : (
+                        product.name === 'Enterprise/Business' && price.unit_amount === 0 ? 'Contact Sales' : `Select ${product.name} (${price.recurring.interval})`
+                      )}
+                    </Button>
+                    {product.name === 'Pro' && price.recurring.interval === 'year' && (
+                      <p className="text-sm text-green-400 text-center mt-2">Save ~20% annually!</p>
                     )}
-                  </Button>
-                  {product.name === 'Pro' && price.recurring.interval === 'year' && (
-                    <p className="text-sm text-green-400 text-center mt-2">Save ~20% annually!</p>
-                  )}
-                  {product.name === 'Starter' && price.recurring.interval === 'year' && (
-                    <p className="text-sm text-green-400 text-center mt-2">Save ~15% annually!</p>
-                  )}
-                </div>
-              ))}
-              <ul className="mt-8 space-y-3 text-gray-300 text-left w-full">
-                {/* Placeholder for features - these would ideally come from product metadata or a predefined list */}
-                <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? '500 Pipeline Runs/Month' : product.name === 'Pro' ? '5,000 Pipeline Runs/Month' : '50,000+ Pipeline Runs/Month'}</li>
-                <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Basic Agent Orchestration' : product.name === 'Pro' ? 'Advanced Multi-Agent Pipelines' : 'Custom Agents & Workflows'}</li>
-                <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Core Integrations' : product.name === 'Pro' ? 'More Connectors' : 'SSO & Custom Integrations'}</li>
-                <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Community Support' : product.name === 'Pro' ? 'Priority Support' : 'Dedicated Account Manager'}</li>
-                {product.name === 'Pro' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Basic Analytics</li>}
-                {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Team Seats & User Management</li>}
-                {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> White-Label Options</li>}
-                {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Priority Feature Requests</li>}
-              </ul>
-            </CardContent>
-            <CardFooter className="text-center text-sm text-gray-500 pt-6">
-              {product.name === 'Pro' && <p className="text-blue-400 font-semibold">Our Most Popular Plan!</p>}
-              {product.name === 'Enterprise/Business' && product.prices.some(p => p.unit_amount === 0) && <p className="text-teal-400">Contact us for tailored annual solutions.</p>}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+                    {product.name === 'Starter' && price.recurring.interval === 'year' && (
+                      <p className="text-sm text-green-400 text-center mt-2">Save ~15% annually!</p>
+                    )}
+                  </div>
+                ))}
+                <ul className="mt-8 space-y-3 text-gray-300 text-left w-full">
+                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? '500 Pipeline Runs/Month' : product.name === 'Pro' ? '5,000 Pipeline Runs/Month' : '50,000+ Pipeline Runs/Month'}</li>
+                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Basic Agent Orchestration' : product.name === 'Pro' ? 'Advanced Multi-Agent Pipelines' : 'Custom Agents & Workflows'}</li>
+                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Core Integrations' : product.name === 'Pro' ? 'More Connectors' : 'SSO & Custom Integrations'}</li>
+                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Community Support' : product.name === 'Pro' ? 'Priority Support' : 'Dedicated Account Manager'}</li>
+                  {product.name === 'Pro' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Basic Analytics</li>}
+                  {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Team Seats & User Management</li>}
+                  {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> White-Label Options</li>}
+                  {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Priority Feature Requests</li>}
+                </ul>
+              </CardContent>
+              <CardFooter className="text-center text-sm text-gray-500 pt-6">
+                {product.name === 'Pro' && <p className="text-blue-400 font-semibold">Our Most Popular Plan!</p>}
+                {product.name === 'Enterprise/Business' && product.prices.some(p => p.unit_amount === 0) && <p className="text-teal-400">Contact us for tailored annual solutions.</p>}
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="mt-20 text-center p-8 bg-gray-800 rounded-xl shadow-lg">
         <h2 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500">Beyond Subscriptions: Custom Projects</h2>
@@ -172,23 +229,63 @@ const BillingPage: React.FC = () => {
           For one-off custom client projects or done-for-you agency services, we offer flexible invoicing and payment links.
         </p>
         <div className="flex justify-center space-x-4">
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-8 rounded-lg transition-all duration-300"
-            onClick={() => toast.info('One-off invoice creation not yet implemented in UI.')}
+            onClick={() => setCustomAction('invoice')}
           >
             Request Custom Invoice
           </Button>
-          <Button 
-            size="lg" 
-            variant="outline" 
+          <Button
+            size="lg"
+            variant="outline"
             className="border-purple-500 text-purple-400 hover:bg-purple-900 hover:text-white font-semibold py-3 px-8 rounded-lg transition-all duration-300"
-            onClick={() => toast.info('Payment link generation not yet implemented in UI.')}
+            onClick={() => setCustomAction('link')}
           >
             Generate Payment Link
           </Button>
         </div>
       </div>
+
+      <Dialog open={customAction !== null} onOpenChange={(open) => !open && closeCustomDialog()}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-white italic">
+              {customAction === 'invoice' ? 'Request Custom Invoice' : 'Generate Payment Link'}
+            </DialogTitle>
+          </DialogHeader>
+          {resultUrl ? (
+            <div className="py-4 space-y-4">
+              <p className="text-sm text-slate-400">Live Stripe link ready:</p>
+              <a href={resultUrl} target="_blank" rel="noreferrer" className="block break-all text-teal-400 text-sm underline">{resultUrl}</a>
+            </div>
+          ) : (
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-xs font-medium text-slate-400 mb-1.5 block">Description</label>
+                <input value={customForm.description} onChange={e => setCustomForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="e.g. Custom landing page build"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm focus:outline-none focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-400 mb-1.5 block">Amount (USD)</label>
+                <input value={customForm.amount} onChange={e => setCustomForm(f => ({ ...f, amount: e.target.value }))}
+                  type="number" min="1" step="0.01" placeholder="4997"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm focus:outline-none focus:border-teal-500" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" className="text-slate-400" onClick={closeCustomDialog}>Close</Button>
+            {!resultUrl && (
+              <Button className="bg-teal-600 hover:bg-teal-500" onClick={handleCustomSubmit} disabled={isSubmittingCustom}>
+                {isSubmittingCustom ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Create
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

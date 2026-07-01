@@ -15,7 +15,6 @@ import {
   MessageSquare, 
   Clock, 
   Play,
-  Pause,
   ChevronRight,
   Eye,
   Loader2
@@ -153,18 +152,15 @@ export function OutreachPage() {
                   <TableCell className="text-xs text-slate-500">
                     {seq.lastSentAt ? new Date(seq.lastSentAt).toLocaleString() : 'Never'}
                   </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white">
-                        <MessageSquare className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white">
-                        <Pause className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white">
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </div>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-8 gap-1.5 text-slate-400 hover:text-white"
+                      onClick={(e) => { e.stopPropagation(); setSelectedSequence(seq); setIsDetailOpen(true) }}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      View <ChevronRight className="w-3.5 h-3.5" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -195,23 +191,26 @@ export function OutreachPage() {
                 </div>
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-center">
                   <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Response</p>
-                  <p className="text-sm font-bold text-slate-400">NONE</p>
+                  <p className={`text-sm font-bold ${selectedSequence.status === 'replied' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {selectedSequence.status === 'replied' ? 'REPLIED' : 'NONE YET'}
+                  </p>
                 </div>
               </div>
-              
+
               <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-300">Last Outbound Message</p>
-                <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50 text-xs text-slate-400 font-mono leading-relaxed italic">
-                  "I just finished building a custom SEO-optimized website for {getLeadName(selectedSequence?.leadId)}. 
-                  I noticed some major visibility gaps in your current setup. Would you like to keep the preview site?"
+                <p className="text-sm font-medium text-slate-300">Last Outbound Message (AI-generated via Groq, sent via SendGrid)</p>
+                <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50 text-xs text-slate-400 font-mono leading-relaxed whitespace-pre-wrap">
+                  {selectedSequence.lastEmailBody || 'No stored email body for this sequence yet — it was created before message logging was added, or is still queued.'}
                 </div>
               </div>
 
               <div className="p-4 rounded-xl bg-teal-500/5 border border-teal-500/20">
                 <p className="text-[10px] font-bold text-teal-500 uppercase mb-2">Next Automated Action</p>
                 <p className="text-sm text-slate-300">
-                  {selectedSequence.step < 5 
-                    ? `Step ${selectedSequence.step + 1} (Follow-up) will trigger in 42 hours if no response.`
+                  {selectedSequence.status === 'dead'
+                    ? 'Sequence marked dead by the Qualifying agent — no further steps will run.'
+                    : selectedSequence.step < 5
+                    ? `Step ${selectedSequence.step + 1} (Follow-up) will trigger the next time Smart Follow-up runs, if the lead has been quiet 24h+.`
                     : 'Sequence completed. Awaiting final repurpose deadline.'}
                 </p>
               </div>
@@ -219,10 +218,6 @@ export function OutreachPage() {
           )}
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setIsDetailOpen(false)}>Close</Button>
-            <Button className="bg-teal-600 hover:bg-teal-500 gap-2">
-              <Play className="w-4 h-4" />
-              Manual Override
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

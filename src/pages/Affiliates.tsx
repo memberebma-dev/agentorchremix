@@ -11,8 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Users, Plus, Copy, Loader2, Link2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-
-const BACKEND_URL = 'https://s5ksm5ty.backend.blink.new'
+import { BACKEND_URL } from '@/lib/api'
 
 interface Affiliate {
   id: string

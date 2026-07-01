@@ -43,6 +43,7 @@ export interface OutreachSequence {
   emailSentAt?: string
   replyText?: string
   lastSentAt?: string
+  lastEmailBody?: string
   createdAt: string
 }
 

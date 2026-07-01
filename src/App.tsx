@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Loader2, LogOut, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { BACKEND_URL } from '@/lib/api'
 
 type PipelineView =
   | 'dashboard'
@@ -140,37 +141,21 @@ function App() {
 
 function SettingsPage() {
   const { user } = useBlinkAuth()
-  const [isStripeConnected, setIsStripeConnected] = useState(() =>
-    localStorage.getItem('stripe_connected') === 'true'
-  )
+  const [stripeStatus, setStripeStatus] = useState<'checking' | 'connected' | 'not_connected'>('checking')
 
-  useEffect(() => {
-    // Handle Stripe OAuth callback (code param in URL)
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('code')) {
-      setIsStripeConnected(true)
-      localStorage.setItem('stripe_connected', 'true')
-      toast.success('Stripe account connected successfully!')
-      window.history.replaceState({}, '', window.location.pathname)
+  const checkStripeStatus = async () => {
+    setStripeStatus('checking')
+    try {
+      const res = await fetch(`${BACKEND_URL}/stripe/products-with-prices`)
+      setStripeStatus(res.ok ? 'connected' : 'not_connected')
+    } catch {
+      setStripeStatus('not_connected')
     }
-  }, [])
-
-  const handleStripeConnect = () => {
-    toast.info('Connecting Stripe account...')
-    // Simulate OAuth success for demo
-    // In production: redirect to STRIPE_OAUTH_URL (see instructions below)
-    setTimeout(() => {
-      setIsStripeConnected(true)
-      localStorage.setItem('stripe_connected', 'true')
-      toast.success('Stripe connected! Revenue will flow to your account automatically.')
-    }, 1500)
   }
 
-  const handleStripeDisconnect = () => {
-    setIsStripeConnected(false)
-    localStorage.removeItem('stripe_connected')
-    toast.success('Stripe account disconnected.')
-  }
+  useEffect(() => { checkStripeStatus() }, [])
+
+  const isStripeConnected = stripeStatus === 'connected'
 
   return (
     <div className="space-y-6">
@@ -197,21 +182,25 @@ function SettingsPage() {
             invoices when bridge lender prospects say "yes" to your outreach.
           </p>
 
-          {isStripeConnected ? (
+          {stripeStatus === 'checking' ? (
+            <div className="flex items-center gap-2 p-4 rounded-lg bg-slate-800/40 border border-slate-700/40 text-sm text-slate-400">
+              <Loader2 className="w-4 h-4 animate-spin" /> Checking Stripe connection...
+            </div>
+          ) : isStripeConnected ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-emerald-400">Stripe Connected</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Invoices auto-sent via your Stripe account</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Live invoices &amp; charges are backed by your Stripe account</p>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-xs text-slate-500 hover:text-red-400"
-                  onClick={handleStripeDisconnect}
+                  className="text-xs text-slate-500 hover:text-white"
+                  onClick={checkStripeStatus}
                 >
-                  Disconnect
+                  Recheck
                 </Button>
               </div>
               <a
@@ -226,22 +215,24 @@ function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <Button
-                className="w-full bg-[#635BFF] hover:bg-[#5851E5] text-white font-semibold gap-2"
-                onClick={handleStripeConnect}
-              >
-                <Zap className="w-4 h-4" />
-                Connect Stripe Account
-              </Button>
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                <p className="text-sm font-semibold text-red-400">Stripe not connected</p>
+              </div>
               <div className="p-4 rounded-lg bg-slate-800/60 border border-slate-700/50 text-xs text-slate-500 space-y-2">
-                <p className="font-semibold text-slate-300">To enable real Stripe OAuth:</p>
+                <p className="font-semibold text-slate-300">To enable live invoicing &amp; payments:</p>
                 <ol className="space-y-1 list-decimal list-inside leading-relaxed">
-                  <li>Go to <a href="https://dashboard.stripe.com/settings/connect" target="_blank" rel="noreferrer" className="text-[#635BFF] hover:underline">Stripe Connect Settings</a></li>
-                  <li>Create a Connect application → copy your <strong className="text-slate-300">Client ID</strong></li>
-                  <li>Build OAuth URL: <span className="font-mono bg-slate-900 px-1 rounded">https://connect.stripe.com/oauth/authorize?response_type=code&client_id=YOUR_CLIENT_ID&scope=read_write</span></li>
-                  <li>Replace the handleStripeConnect button with a redirect to that URL</li>
+                  <li>Go to <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noreferrer" className="text-[#635BFF] hover:underline">Stripe API Keys</a> and copy your secret key</li>
+                  <li>Set it as the <span className="font-mono bg-slate-900 px-1 rounded">STRIPE_SECRET_KEY</span> environment variable on the backend</li>
+                  <li>Add a webhook endpoint pointing at <span className="font-mono bg-slate-900 px-1 rounded">{BACKEND_URL}/stripe/webhook</span> and set <span className="font-mono bg-slate-900 px-1 rounded">STRIPE_WEBHOOK_SECRET</span></li>
                 </ol>
               </div>
+              <Button
+                className="w-full bg-[#635BFF] hover:bg-[#5851E5] text-white font-semibold gap-2"
+                onClick={checkStripeStatus}
+              >
+                <Zap className="w-4 h-4" />
+                Recheck Connection
+              </Button>
             </div>
           )}
         </div>
@@ -267,55 +258,7 @@ function SettingsPage() {
         </div>
 
         {/* Pipeline Config */}
-        <div className="p-6 rounded-xl bg-slate-900/50 border border-slate-800">
-          <h2 className="text-lg font-semibold text-white mb-4">Pipeline Configuration</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-medium text-slate-400 mb-2 block">
-                Default Lead Score Threshold
-              </label>
-              <input
-                type="number"
-                defaultValue={60}
-                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-400 mb-2 block">Growth Package Price ($)</label>
-              <input
-                type="number"
-                defaultValue={4997}
-                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-400 mb-2 block">Region Focus</label>
-              <select className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm">
-                <option>Southern California</option>
-                <option>Northern California</option>
-                <option>Florida</option>
-                <option>Texas</option>
-                <option>Arizona</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-400 mb-2 block">
-                Outreach Response Window (hours)
-              </label>
-              <input
-                type="number"
-                defaultValue={48}
-                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
-              />
-            </div>
-            <Button
-              className="w-full bg-teal-600 hover:bg-teal-500"
-              onClick={() => toast.success('Configuration saved.')}
-            >
-              Save Configuration
-            </Button>
-          </div>
-        </div>
+        <PipelineConfigCard />
 
         {/* Acquisition Flow Reference */}
         <div className="p-6 rounded-xl bg-slate-900/50 border border-slate-800">
@@ -342,6 +285,95 @@ function SettingsPage() {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+const PIPELINE_CONFIG_KEY = 'agentorch_pipeline_config'
+
+interface PipelineConfig {
+  leadScoreThreshold: number
+  growthPackagePrice: number
+  regionFocus: string
+  outreachResponseWindowHours: number
+}
+
+const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
+  leadScoreThreshold: 60,
+  growthPackagePrice: 4997,
+  regionFocus: 'Southern California',
+  outreachResponseWindowHours: 48,
+}
+
+function loadPipelineConfig(): PipelineConfig {
+  try {
+    const raw = localStorage.getItem(PIPELINE_CONFIG_KEY)
+    if (raw) return { ...DEFAULT_PIPELINE_CONFIG, ...JSON.parse(raw) }
+  } catch { /* fall through to defaults */ }
+  return DEFAULT_PIPELINE_CONFIG
+}
+
+function PipelineConfigCard() {
+  const [config, setConfig] = useState<PipelineConfig>(loadPipelineConfig)
+
+  const handleSave = () => {
+    localStorage.setItem(PIPELINE_CONFIG_KEY, JSON.stringify(config))
+    toast.success('Configuration saved.')
+  }
+
+  return (
+    <div className="p-6 rounded-xl bg-slate-900/50 border border-slate-800">
+      <h2 className="text-lg font-semibold text-white mb-4">Pipeline Configuration</h2>
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-slate-400 mb-2 block">
+            Default Lead Score Threshold
+          </label>
+          <input
+            type="number"
+            value={config.leadScoreThreshold}
+            onChange={(e) => setConfig(c => ({ ...c, leadScoreThreshold: Number(e.target.value) }))}
+            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-400 mb-2 block">Growth Package Price ($)</label>
+          <input
+            type="number"
+            value={config.growthPackagePrice}
+            onChange={(e) => setConfig(c => ({ ...c, growthPackagePrice: Number(e.target.value) }))}
+            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-400 mb-2 block">Region Focus</label>
+          <select
+            value={config.regionFocus}
+            onChange={(e) => setConfig(c => ({ ...c, regionFocus: e.target.value }))}
+            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
+          >
+            <option>Southern California</option>
+            <option>Northern California</option>
+            <option>Florida</option>
+            <option>Texas</option>
+            <option>Arizona</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-400 mb-2 block">
+            Outreach Response Window (hours)
+          </label>
+          <input
+            type="number"
+            value={config.outreachResponseWindowHours}
+            onChange={(e) => setConfig(c => ({ ...c, outreachResponseWindowHours: Number(e.target.value) }))}
+            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
+          />
+        </div>
+        <Button className="w-full bg-teal-600 hover:bg-teal-500" onClick={handleSave}>
+          Save Configuration
+        </Button>
       </div>
     </div>
   )
