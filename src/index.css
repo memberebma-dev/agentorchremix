@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Lora:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:ital,wght@0,100..700;1,100..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Ocean Teal - Professional Dark Theme for AgentOrch Pipeline */
+    /* Primary: #0D9488 (Teal) */
+    --primary: 174 86% 31%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary: #1E293B (Slate-800) */
+    --secondary: 170 67% 97%;
+    --secondary-foreground: 178 84% 19%;
+    
+    /* Accent: #F59E0B (Amber) */
+    --accent: 172 66% 50%;
+    --accent-foreground: 178 84% 10%;
+    
+    /* Background: #0F172A (Slate-900) */
+    --background: 0 0% 98%;
+    --foreground: 178 84% 10%;
+    
+    /* Cards: #1E293B with subtle borders */
+    --card: 0 0% 100%;
+    --card-foreground: 178 84% 10%;
+    
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 178 84% 10%;
+    
+    /* Muted */
+    --muted: 170 67% 97%;
+    --muted-foreground: 178 84% 30%;
+    
+    /* Destructive */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Border */
+    --border: 174 86% 90%;
+    --input: 174 86% 90%;
+    --ring: 174 86% 31%;
+    
+    /* Charts */
+    --chart-1: 174 77% 29%;
+    --chart-2: 38 92% 50%;
+    --chart-3: 199 89% 48%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    
+    /* Sidebar - Dark Slate */
+    --sidebar: 222 47% 9%;
+    --sidebar-foreground: 215 20% 65%;
+    --sidebar-primary: 174 77% 29%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 38 92% 50%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 217 28% 18%;
+    --sidebar-ring: 174 77% 29%;
+    
+    /* Fonts */
+    --font-sans: DM Sans, sans-serif;
+    --font-serif: Lora, serif;
+    --font-mono: IBM Plex Mono, monospace;
+    
+    /* Shadows */
+    --shadow-2xs: 0px 4px 8px -1px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0px 4px 8px -1px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0px 4px 8px -1px hsl(0 0% 0% / 0.10), 0px 1px 2px -2px hsl(0 0% 0% / 0.10);
+    --shadow: 0px 4px 8px -1px hsl(0 0% 0% / 0.10), 0px 1px 2px -2px hsl(0 0% 0% / 0.10);
+    --shadow-md: 0px 4px 8px -1px hsl(0 0% 0% / 0.10), 0px 2px 4px -2px hsl(0 0% 0% / 0.10);
+    --shadow-lg: 0px 4px 8px -1px hsl(0 0% 0% / 0.10), 0px 4px 6px -2px hsl(0 0% 0% / 0.10);
+    --shadow-xl: 0px 4px 8px -1px hsl(0 0% 0% / 0.10), 0px 8px 10px -2px hsl(0 0% 0% / 0.10);
+    --shadow-2xl: 0px 4px 8px -1px hsl(0 0% 0% / 0.25);
+    
+    /* Misc */
+    --tracking-normal: 0em;
+    --spacing: 0.25rem;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* ⚠️ AGENT MUST REPLACE: Dark mode colors - replace with your custom dark palette */
+    --background: 178 84% 5%;
+    --foreground: 170 67% 97%;
+    --card: 178 84% 8%;
+    --card-foreground: 170 67% 97%;
+    --popover: 178 84% 8%;
+    --popover-foreground: 170 67% 97%;
+    /* ⚠️ PLACEHOLDER: Replace with your custom dark mode primary color */
+    --primary: 174 86% 31%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 178 84% 12%;
+    --secondary-foreground: 170 67% 97%;
+    --muted: 178 84% 12%;
+    --muted-foreground: 178 10% 70%;
+    --accent: 172 66% 50%;
+    --accent-foreground: 178 84% 10%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 178 84% 15%;
+    --input: 178 84% 15%;
+    --ring: 174 86% 31%;
+
+    /* ⚠️ PLACEHOLDER: Replace with your custom dark mode chart colors */
+    --chart-1: 280 65% 55%;
+    --chart-2: 300 65% 55%;
+    --chart-3: 320 65% 55%;
+    --chart-4: 340 65% 55%;
+    --chart-5: 0 65% 55%;
+
+    /* ⚠️ PLACEHOLDER: Replace with your custom dark mode sidebar colors */
+    --sidebar: 217.2414 32.5843% 17.451%;
+    --sidebar-foreground: 216 12.1951% 83.9216%;
+    --sidebar-primary: 280 65% 55%;
+    --sidebar-primary-foreground: 222.2222 47.3684% 11.1765%;
+    --sidebar-accent: 216.9231 19.1176% 26.6667%;
+    --sidebar-accent-foreground: 240 5.0279% 64.902%;
+    --sidebar-border: 215 13.7931% 34.1176%;
+    --sidebar-ring: 280 65% 55%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    letter-spacing: var(--tracking-normal);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

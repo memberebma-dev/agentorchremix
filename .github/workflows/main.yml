@@ -1,0 +1,28 @@
+yaml
+name: Basic Health Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:   # Allows you to run it manually
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Say hello and check repo
+        run: |
+          echo "✅ GitHub Actions is working for AgentOrch!"
+          echo "Repo name: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          ls -la  # Shows what files/folders are actually in your repo (helpful for us)
+
+      - name: Check for important files
+        run: |
+          echo "Looking for React/Next.js files..."
+          find . -name "*.jsx" -o -name "*.tsx" -o -name "package.json" | head -10 || echo "No obvious frontend files found yet"
