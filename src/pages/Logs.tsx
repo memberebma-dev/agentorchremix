@@ -38,6 +38,15 @@ export function LogsPage() {
     return leads?.find(l => l.id === leadId)?.companyName || 'Unknown'
   }
 
+  const recentRuns = runs?.slice(0, 20) || []
+  const hasRecentFailure = recentRuns.some(r => r.status === 'failed')
+
+  const getDuration = (run: any) => {
+    if (!run.finishedAt) return run.status === 'running' ? '—' : 'n/a'
+    const ms = new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()
+    return `${(ms / 1000).toFixed(1)}s`
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'success': return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3" /> Success</Badge>
@@ -56,7 +65,10 @@ export function LogsPage() {
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400">
           <Terminal className="w-3 h-3 text-teal-500" />
-          System Status: <span className="text-emerald-400 font-bold ml-1">OPTIMAL</span>
+          System Status:{' '}
+          <span className={`font-bold ml-1 ${hasRecentFailure ? 'text-amber-400' : 'text-emerald-400'}`}>
+            {hasRecentFailure ? 'DEGRADED' : 'OPTIMAL'}
+          </span>
         </div>
       </div>
 
@@ -155,7 +167,7 @@ export function LogsPage() {
                 </div>
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                   <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Duration</p>
-                  <p className="text-sm font-bold text-white">4.2s</p>
+                  <p className="text-sm font-bold text-white">{getDuration(selectedRun)}</p>
                 </div>
               </div>
             </div>

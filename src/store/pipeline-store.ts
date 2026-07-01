@@ -12,6 +12,7 @@ import type {
   AgentRun 
 } from '@/types/pipeline'
 import { blink } from '@/lib/blink'
+import { ORCHESTRATOR_URL } from '@/lib/api'
 
 // Pipeline stages configuration
 export const PIPELINE_STAGES: { name: LeadStatus; color: string; label: string }[] = [
@@ -250,8 +251,6 @@ export function useInvoiceReminders() {
     staleTime: 30000,
   })
 }
-
-const ORCHESTRATOR_URL = 'https://dimg0s7y.backend.blink.new/orchestrator'
 
 export function useStartAgent() {
   const queryClient = useQueryClient()

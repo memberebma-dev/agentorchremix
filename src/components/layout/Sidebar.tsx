@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useLeads, useAgentRuns } from '@/store/pipeline-store';
 import { 
   LayoutDashboard, 
   Users, 
@@ -41,6 +42,10 @@ const navItems = [
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const { data: leads } = useLeads();
+  const { data: agentRuns } = useAgentRuns();
+  const activeLeadCount = leads?.filter(l => l.status !== 'client' && l.status !== 'lost').length ?? 0;
+  const isRunning = agentRuns?.some(run => run.status === 'running');
 
   return (
     <aside
@@ -120,8 +125,10 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-xs font-medium text-amber-400">AI Active</p>
-              <p className="text-xs text-slate-500 truncate">Processing 47 leads</p>
+              <p className="text-xs font-medium text-amber-400">{isRunning ? 'AI Active' : 'AI Idle'}</p>
+              <p className="text-xs text-slate-500 truncate">
+                {activeLeadCount > 0 ? `Tracking ${activeLeadCount} active lead${activeLeadCount === 1 ? '' : 's'}` : 'No active leads yet'}
+              </p>
             </div>
           )}
         </div>

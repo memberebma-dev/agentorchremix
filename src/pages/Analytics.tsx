@@ -6,8 +6,7 @@ import {
 import { TrendingUp, Users, Send, DollarSign, Target, Bot, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-
-const BACKEND_URL = 'https://s5ksm5ty.backend.blink.new'
+import { BACKEND_URL } from '@/lib/api'
 
 interface AnalyticsSummary {
   totalLeads: number
