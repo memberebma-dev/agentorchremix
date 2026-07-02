@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { Hono } from 'hono';
 import { createClient } from '@blinkdotnew/sdk';
 import { createAndFinalizeInvoice } from './lib/stripeInvoice';
+import { trackAffiliateConversion } from './routes/affiliates';
 
 const stripeApp = new Hono<{ Bindings: Record<string, string> }>();
 
@@ -114,6 +115,19 @@ stripeApp.post('/webhook', async (c) => {
       if (localInvoice && localInvoice.status !== 'paid') {
         await blink.db.invoices.update(localInvoice.id, { status: 'paid' });
         await blink.db.leads.update(localInvoice.leadId, { status: 'client' });
+
+        // Credit the referring affiliate, if this lead was tagged with one.
+        const leadMatches = await blink.db.leads.list({ where: { id: localInvoice.leadId }, limit: 1 }) as any[];
+        const lead = leadMatches[0];
+        if (lead?.referralCode) {
+          const result = await trackAffiliateConversion(blink, {
+            referralCode: lead.referralCode,
+            leadId: localInvoice.leadId,
+            invoiceId: localInvoice.id,
+            amount: localInvoice.amount,
+          });
+          if (!result.success) console.error('Affiliate tracking failed:', result.error);
+        }
       }
     } else if (event.type === 'invoice.voided' || event.type === 'invoice.marked_uncollectible') {
       const stripeInvoice = event.data.object as Stripe.Invoice;

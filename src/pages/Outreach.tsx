@@ -29,14 +29,18 @@ import {
 } from '@/components/ui/dialog'
 import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 import { toast } from 'sonner'
+import { blink } from '@/lib/blink'
+import { useQueryClient } from '@tanstack/react-query'
 
 export function OutreachPage() {
   const { data: leads } = useLeads()
   const { data: campaigns, isLoading } = useCampaigns()
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
+  const queryClient = useQueryClient()
   const [selectedSequence, setSelectedSequence] = useState<any>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [isMarkingReplied, setIsMarkingReplied] = useState(false)
 
   const isOutreachRunning = agentRuns?.some(run => run.agentName === 'Outreach' && run.status === 'running')
 
@@ -51,6 +55,30 @@ export function OutreachPage() {
 
   const getLeadName = (leadId: string) => {
     return leads?.find(l => l.id === leadId)?.companyName || 'Unknown Lead'
+  }
+
+  const handleMarkReplied = async () => {
+    if (!selectedSequence) return
+    setIsMarkingReplied(true)
+    try {
+      await blink.db.outreachSequences.update(selectedSequence.id, { status: 'replied' })
+      await blink.db.outreachAnalytics.create({
+        id: crypto.randomUUID(),
+        sequenceId: selectedSequence.id,
+        leadId: selectedSequence.leadId,
+        step: selectedSequence.step,
+        eventType: 'replied',
+        metadata: JSON.stringify({ manual: true }),
+      })
+      setSelectedSequence((s: any) => s ? { ...s, status: 'replied' } : s)
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: ['outreachAnalytics'] })
+      toast.success('Marked as replied — Qualifying agent will pick this up next run')
+    } catch {
+      toast.error('Failed to mark as replied')
+    } finally {
+      setIsMarkingReplied(false)
+    }
   }
 
   const getStatusBadge = (status: string) => {
@@ -198,7 +226,7 @@ export function OutreachPage() {
               </div>
 
               <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-300">Last Outbound Message (AI-generated via Groq, sent via SendGrid)</p>
+                <p className="text-sm font-medium text-slate-300">Last Outbound Message (AI-generated)</p>
                 <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50 text-xs text-slate-400 font-mono leading-relaxed whitespace-pre-wrap">
                   {selectedSequence.lastEmailBody || 'No stored email body for this sequence yet — it was created before message logging was added, or is still queued.'}
                 </div>
@@ -218,6 +246,16 @@ export function OutreachPage() {
           )}
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setIsDetailOpen(false)}>Close</Button>
+            {selectedSequence?.status !== 'replied' && selectedSequence?.status !== 'dead' && (
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-500 gap-2"
+                onClick={handleMarkReplied}
+                disabled={isMarkingReplied}
+              >
+                {isMarkingReplied ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Mark as Replied
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

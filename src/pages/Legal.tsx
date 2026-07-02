@@ -20,8 +20,9 @@ export function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-white mb-3">3. Consent Obtained</h2>
-          <p>AgentOrch only processes leads where consent has been obtained or where there is a legitimate interest for business engagement. Users must verify consent status before initiating autonomous cycles.</p>
+          <h2 className="text-xl font-semibold text-white mb-3">3. Lead Sourcing and Verification</h2>
+          <p>Leads discovered automatically (via Google Maps or AI-assisted discovery) are sourced from public business directory data and, in the AI-discovery fallback path, may include AI-estimated business details that have not been independently verified for accuracy. These leads are marked "Unverified" and the platform will not send outreach emails or invoices for them automatically.</p>
+          <p className="mt-2">Before any autonomous outreach or invoicing action runs for a lead, a user must explicitly review and "Verify" that lead in the dashboard, confirming there is a legitimate business interest or consent basis for contacting it. This verification step is enforced by the platform, not merely a policy statement — unverified leads are hard-blocked from autonomous outreach and invoicing.</p>
         </section>
 
         <section>

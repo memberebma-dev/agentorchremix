@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog'
-import { Search, FileText, Sparkles, Loader2, ExternalLink } from 'lucide-react'
+import { Search, FileText, Sparkles, Loader2, ExternalLink, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function AuditsPage() {
@@ -97,7 +97,14 @@ export function AuditsPage() {
                     onClick={() => audit && setSelectedLeadId(lead.id)}
                   >
                     <TableCell className="font-medium text-slate-200 group-hover:text-teal-400 transition-colors">
-                      {lead.companyName}
+                      <div className="flex items-center gap-2">
+                        {lead.companyName}
+                        {lead.dataSource === 'ai_estimated' && (
+                          <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[10px] gap-1">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Unverified
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-xs text-slate-500">{lead.website || '—'}</TableCell>
                     <TableCell className="text-slate-300 font-mono">{score ?? '—'}</TableCell>

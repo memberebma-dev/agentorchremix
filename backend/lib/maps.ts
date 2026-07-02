@@ -1,5 +1,7 @@
 // Google Maps Places API — real lead discovery + web presence scoring
 
+import { generateAIContent } from "./ai";
+
 export interface PlaceResult {
   companyName: string;
   website: string;
@@ -66,33 +68,17 @@ export async function discoverLeadsFromMaps(
   }
 }
 
-/** Discover leads via OpenAI when Google Maps fails (billing not enabled, etc.) */
+/** Discover leads via the AI provider fallback chain when Google Maps fails (billing not enabled, etc.) */
 export async function discoverLeadsViaAI(
-  openaiKey: string,
+  env: Record<string, string>,
   niche: string,
   location: string,
   maxResults = 5
 ): Promise<PlaceResult[]> {
-  if (!openaiKey) return [];
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{
-          role: "user",
-          content: `Return a JSON array of exactly ${maxResults} real businesses in the "${niche}" industry located in "${location}". Each object must have: companyName, website (real URL or empty string), phone (real number or empty string), address (real street address in ${location}), rating (1-5 number), reviewCount (number). Return ONLY valid JSON, no markdown.`
-        }],
-        max_tokens: 1500,
-        temperature: 0.3,
-      }),
-    });
-    if (!res.ok) return [];
-    const json = (await res.json()) as any;
-    let text = json.choices?.[0]?.message?.content?.trim() || "[]";
+    const raw = await generateAIContent(env, `Return a JSON array of exactly ${maxResults} real businesses in the "${niche}" industry located in "${location}". Each object must have: companyName, website (real URL or empty string), phone (real number or empty string), address (real street address in ${location}), rating (1-5 number), reviewCount (number). Return ONLY valid JSON, no markdown.`);
     // Strip markdown fences if present
-    text = text.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const text = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
     const parsed = JSON.parse(text);
     if (!Array.isArray(parsed)) return [];
     return parsed.slice(0, maxResults).map((b: any, i: number) => ({
@@ -111,12 +97,16 @@ export async function discoverLeadsViaAI(
 }
 
 /** Score a lead 0-99 based on real digital presence signals from Google Maps */
+// Note: searchActivityScore and paidAdsActivity were previously computed with Math.random() —
+// no data source available here can honestly measure a third-party business's search/ads activity,
+// so those fields were removed rather than faked. Only overallScore and conversionLikelihood remain,
+// both fully deterministic from real Google Maps presence signals.
 export function scoreLeadFromPresence(p: {
   website?: string;
   phone?: string;
   rating?: number;
   reviewCount?: number;
-}): { overallScore: number; conversionLikelihood: number; searchActivityScore: number; paidAdsActivity: number; issues: string[] } {
+}): { overallScore: number; conversionLikelihood: number; issues: string[] } {
   let score = 45;
   const issues: string[] = [];
 
@@ -131,11 +121,15 @@ export function scoreLeadFromPresence(p: {
   if (!p.phone) { score += 5; issues.push("No phone indexed"); }
 
   const overallScore = Math.min(score, 99);
-  return {
-    overallScore,
-    conversionLikelihood: Math.max(30, Math.min(95, overallScore - 5 + Math.floor(Math.random() * 8))),
-    searchActivityScore: Math.floor(Math.random() * 40) + 15,
-    paidAdsActivity: Math.floor(Math.random() * 25) + 5,
-    issues,
-  };
+
+  // Deterministic conversion-likelihood estimate: weighted opportunity score, boosted by
+  // signals that the business is real/established (reviews, rating) which make them more
+  // reachable/credible prospects, not just "has a big gap."
+  let conversion = 40 + Math.min(overallScore, 60) * 0.5;
+  if ((p.reviewCount || 0) >= 10) conversion += 10;
+  if (p.rating && p.rating >= 4) conversion += 5;
+  if (!p.website) conversion += 5;
+  const conversionLikelihood = Math.max(30, Math.min(95, Math.round(conversion)));
+
+  return { overallScore, conversionLikelihood, issues };
 }

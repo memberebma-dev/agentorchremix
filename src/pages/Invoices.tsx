@@ -196,7 +196,7 @@ export function InvoicesPage() {
                 
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                   <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Service Package</p>
-                  <p className="text-sm text-slate-300 font-medium">Digital Agency Growth Package (Monthly Subscription)</p>
+                  <p className="text-sm text-slate-300 font-medium">Digital Agency Growth Package (one-time invoice)</p>
                 </div>
               </div>
             </div>

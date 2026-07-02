@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { loadPipelineConfig } from '@/lib/pipelineConfig';
 
 interface StatsCardProps {
   title: string;
@@ -90,7 +91,8 @@ export function PipelineDashboard({ onNavigate }: { onNavigate: (view: string) =
   const handleRunPipeline = async () => {
     toast('Starting acquisition cycle...', { icon: '🚀' });
     try {
-      await startAgent.mutateAsync({ agentName: 'Full Pipeline' });
+      const { regionFocus } = loadPipelineConfig();
+      await startAgent.mutateAsync({ agentName: 'Full Pipeline', location: regionFocus });
       toast.success('Pipeline running — watch progress below.');
       // Kick an immediate refetch so progress card shows instantly
       refetchRuns();
@@ -282,7 +284,7 @@ function AgentActionButton({ name, icon }: { name: string; icon: React.ReactNode
     <Button
       variant="outline"
       className="w-full justify-start gap-3 border-slate-700 text-slate-300 hover:bg-slate-800"
-      onClick={() => startAgent.mutate({ agentName: name })}
+      onClick={() => startAgent.mutate({ agentName: name, location: loadPipelineConfig().regionFocus })}
       disabled={startAgent.isPending}
     >
       {icon}

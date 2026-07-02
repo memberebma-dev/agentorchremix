@@ -11,6 +11,7 @@ import { Bell, Play, DollarSign, AlertTriangle, CheckCircle2, Clock, Loader2, Re
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BACKEND_URL } from '@/lib/api'
+import { loadPipelineConfig } from '@/lib/pipelineConfig'
 
 function useReminders() {
   return useQuery({
@@ -84,7 +85,12 @@ export function InvoiceRemindersPage() {
 
   const handleRunSmartFollowup = async () => {
     try {
-      const res = await fetch(`${BACKEND_URL}/smart-followup`, { method: 'POST' })
+      const config = loadPipelineConfig()
+      const res = await fetch(`${BACKEND_URL}/smart-followup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ windowHours: config.outreachResponseWindowHours, threshold: config.leadScoreThreshold }),
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as any
       toast.success(`Smart follow-up: ${data.advanced} sequences advanced`)
@@ -99,7 +105,7 @@ export function InvoiceRemindersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight italic">Invoice Reminders</h1>
-          <p className="text-sm text-slate-400 mt-1">Automated follow-up + SendGrid email escalation</p>
+          <p className="text-sm text-slate-400 mt-1">Automated follow-up + email escalation (SendGrid, with Resend fallback)</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800 gap-2"

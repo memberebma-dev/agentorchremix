@@ -32,7 +32,7 @@ affiliatesApp.post("/", async (c) => {
   }
 });
 
-affiliatesApp.delete("/:id", async (c) => {
+affiliatesApp.patch("/:id/deactivate", async (c) => {
   const env = c.env as Record<string, string>;
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
@@ -43,23 +43,57 @@ affiliatesApp.delete("/:id", async (c) => {
   }
 });
 
+affiliatesApp.delete("/:id", async (c) => {
+  const env = c.env as Record<string, string>;
+  const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
+  const id = c.req.param("id");
+  try {
+    const referrals = (await blink.db.affiliateReferrals.list({ where: { affiliateId: id }, limit: 500 })) as any[];
+    for (const r of referrals) {
+      await blink.db.affiliateReferrals.delete(r.id);
+    }
+    await blink.db.affiliates.delete(id);
+    return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+/**
+ * Records a conversion against an affiliate's referral code and credits their commission.
+ * Shared by the public /track endpoint and the Stripe invoice.paid webhook, so a real
+ * payment automatically credits the affiliate who's referralCode is stored on the lead —
+ * no manual /track call needed once a lead is tagged with a referralCode.
+ */
+export async function trackAffiliateConversion(
+  blink: any,
+  params: { referralCode: string; leadId?: string; invoiceId?: string; amount: number }
+): Promise<{ success: boolean; commissionAmount?: number; error?: string }> {
+  const { referralCode, leadId, invoiceId, amount } = params;
+  if (!referralCode) return { success: false, error: "No referral code" };
+  const affiliates = (await blink.db.affiliates.list({ where: { referralCode }, limit: 1 })) as any[];
+  if (!affiliates.length) return { success: false, error: "Affiliate not found" };
+  const affiliate = affiliates[0];
+  const commissionAmount = (Number(amount) * affiliate.commissionRate) / 100;
+  await blink.db.affiliateReferrals.create({
+    id: crypto.randomUUID(), affiliateId: affiliate.id,
+    leadId, invoiceId, commissionAmount, status: "pending",
+  });
+  await blink.db.affiliates.update(affiliate.id, {
+    totalReferrals: (affiliate.totalReferrals || 0) + 1,
+    totalEarned: (Number(affiliate.totalEarned) || 0) + commissionAmount,
+  });
+  return { success: true, commissionAmount };
+}
+
 affiliatesApp.post("/track", async (c) => {
   const env = c.env as Record<string, string>;
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
     const body = await c.req.json();
-    const { referralCode, leadId, invoiceId, amount } = body;
-    const affiliates = await blink.db.affiliates.list({ where: { referralCode }, limit: 1 }) as any[];
-    if (!affiliates.length) return c.json({ error: "Affiliate not found" }, 404);
-    const affiliate = affiliates[0];
-    const commissionAmount = (Number(amount) * affiliate.commissionRate) / 100;
-    await blink.db.affiliateReferrals.create({ id: crypto.randomUUID(), affiliateId: affiliate.id,
-      leadId, invoiceId, commissionAmount, status: "pending" });
-    await blink.db.affiliates.update(affiliate.id, {
-      totalReferrals: (affiliate.totalReferrals || 0) + 1,
-      totalEarned: (Number(affiliate.totalEarned) || 0) + commissionAmount,
-    });
-    return c.json({ success: true, commissionAmount });
+    const result = await trackAffiliateConversion(blink, body);
+    if (!result.success) return c.json({ error: result.error }, 404);
+    return c.json({ success: true, commissionAmount: result.commissionAmount });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
   }

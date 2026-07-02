@@ -13,6 +13,7 @@ import type {
 } from '@/types/pipeline'
 import { blink } from '@/lib/blink'
 import { ORCHESTRATOR_URL } from '@/lib/api'
+import { loadPipelineConfig } from '@/lib/pipelineConfig'
 
 // Pipeline stages configuration
 export const PIPELINE_STAGES: { name: LeadStatus; color: string; label: string }[] = [
@@ -256,7 +257,7 @@ export function useStartAgent() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ agentName, leadId }: { agentName: string; leadId?: string }) => {
+    mutationFn: async ({ agentName, leadId, niche, location }: { agentName: string; leadId?: string; niche?: string; location?: string }) => {
       // 0. Clean up any stuck runs older than 2 minutes before starting
       try {
         const stuckRuns = await blink.db.agentRuns.list({ where: { status: 'running' } })
@@ -280,10 +281,17 @@ export function useStartAgent() {
       
       // 2. Fire the orchestrator edge function via direct fetch (fire-and-forget)
       //    Using direct fetch because blink.functions.invoke may wrap payload differently
+      //    Always include the user's saved pipeline config so price/threshold changes in
+      //    Settings actually affect what the backend does, instead of being local-only.
+      const config = loadPipelineConfig()
       fetch(ORCHESTRATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: run.id, agentName, leadId }),
+        body: JSON.stringify({
+          runId: run.id, agentName, leadId, niche, location,
+          amount: config.growthPackagePrice,
+          threshold: config.leadScoreThreshold,
+        }),
       }).catch((err) => console.error('Orchestrator invoke error:', err))
       
       return run

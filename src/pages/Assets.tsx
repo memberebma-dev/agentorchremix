@@ -29,6 +29,16 @@ import {
 } from '@/components/ui/dialog'
 import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 import { toast } from 'sonner'
+import { useUrlLive } from '@/hooks/use-url-live'
+
+function HostedStatusBadge({ url }: { url?: string }) {
+  const { data: isLive, isLoading } = useUrlLive(url)
+  if (!url) return <Badge className="bg-slate-500/10 text-slate-500 border-slate-500/20">No URL</Badge>
+  if (isLoading) return <Badge className="bg-slate-500/10 text-slate-400 border-slate-500/20">Checking...</Badge>
+  return isLive
+    ? <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Live</Badge>
+    : <Badge className="bg-red-500/10 text-red-500 border-red-500/20">Unreachable</Badge>
+}
 
 export function AssetsPage() {
   const { data: leads } = useLeads()
@@ -119,7 +129,7 @@ export function AssetsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Live</Badge>
+                    <HostedStatusBadge url={asset.hostedUrl} />
                   </TableCell>
                   <TableCell className="text-xs text-slate-500">
                     {new Date(asset.generatedAt).toLocaleString()}
@@ -166,7 +176,7 @@ export function AssetsPage() {
                   </div>
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Hosting</p>
-                    <p className="text-sm font-semibold text-emerald-400">ACTIVE</p>
+                    <HostedStatusBadge url={selectedAsset.hostedUrl} />
                   </div>
                 </div>
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
