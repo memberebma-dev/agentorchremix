@@ -14,7 +14,7 @@ function getProjectId(): string {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
   const match = hostname.match(/^([^.]+)\.sites\.blink\.new$/)
   if (match) return match[1]
-  return 'agentorch-pipeline-engine-s5ksm5ty'
+  return 'agentorch-pipeline-engine-dimg0s7y'
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
