@@ -53,20 +53,25 @@ export async function runOrchestration(
 
     // ─── Scoring (real web presence analysis) ─────────────────────────────────
     if (agentName === "Scoring") {
-      if (!leadId) throw new Error("leadId required");
-      await updateRun("running", 30, "Fetching lead data for real scoring...");
-      const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
-      const lead = leads[0]; if (!lead) throw new Error("Lead not found");
-      const { overallScore, conversionLikelihood, issues } = scoreLeadFromPresence({ website: lead.website, phone: lead.phone });
-      const issuesJson = JSON.stringify(issues);
-      const existing = await blink.db.leadScores.list({ where: { leadId }, limit: 1 }) as any[];
-      if (existing.length > 0) {
-        await blink.db.leadScores.update(existing[0].id, { overallScore, conversionLikelihood, issuesJson, potentialServicesValue: growthPackagePrice });
-      } else {
-        await blink.db.leadScores.create({ id: crypto.randomUUID(), leadId, overallScore, conversionLikelihood, issuesJson, potentialServicesValue: growthPackagePrice });
+      if (leadId) {
+        await updateRun("running", 30, "Fetching lead data for real scoring...");
+        const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
+        const lead = leads[0]; if (!lead) throw new Error("Lead not found");
+        await scoreLead(blink, lead, growthPackagePrice);
+        await updateRun("success", 100, `Scored ${lead.companyName}.`);
+        return;
       }
-      await blink.db.leads.update(leadId, { status: "scored", leadScore: overallScore });
-      await updateRun("success", 100, `Scored ${lead.companyName}: ${overallScore}/100. Issues: ${issues.slice(0, 2).join("; ") || "None"}.`);
+      // Batch mode: score every newly discovered lead that hasn't been scored yet
+      await updateRun("running", 10, "Scanning pipeline for unscored leads...");
+      const candidates = await blink.db.leads.list({ where: { status: "new" }, limit: 25 }) as any[];
+      if (candidates.length === 0) { await updateRun("success", 100, "No new leads pending scoring."); return; }
+      let done = 0;
+      for (const lead of candidates) {
+        await updateRun("running", 10 + Math.round((done / candidates.length) * 85), `Scoring ${lead.companyName} (${done + 1}/${candidates.length})...`);
+        await scoreLead(blink, lead, growthPackagePrice);
+        done++;
+      }
+      await updateRun("success", 100, `Batch complete: scored ${done} lead(s).`);
       return;
     }
 
@@ -94,29 +99,29 @@ export async function runOrchestration(
       return;
     }
 
-    // ─── Outreach (real SendGrid email) ───────────────────────────────────────
+    // ─── Outreach (real SendGrid/Resend email) ────────────────────────────────
     if (agentName === "Outreach") {
-      if (!leadId) throw new Error("leadId required");
-      const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
-      const lead = leads[0]; if (!lead) throw new Error("Lead not found");
-      if (!lead.consentObtained) { await updateRun("failed", 0, `Blocked: ${lead.companyName} has not been verified for outreach yet. Verify the lead on the Leads page first.`); return; }
-      await updateRun("running", 40, `Composing AI outreach for ${lead.companyName}...`);
-      const emailBody = await generateAIContent(env, `Write a 4-sentence cold outreach email for ${lead.companyName} (${lead.contactName || "decision maker"}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`);
-      const seqId = crypto.randomUUID();
-      const existingSeq = await blink.db.outreachSequences.list({ where: { leadId }, limit: 1 }) as any[];
-      if (existingSeq.length === 0) {
-        await blink.db.outreachSequences.create({ id: seqId, leadId, step: 1, status: "sent", emailSentAt: new Date().toISOString(), lastSentAt: new Date().toISOString(), lastEmailBody: emailBody });
-      } else {
-        await blink.db.outreachSequences.update(existingSeq[0].id, { step: Math.min((existingSeq[0].step || 1) + 1, 5), lastSentAt: new Date().toISOString(), lastEmailBody: emailBody });
+      if (leadId) {
+        const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
+        const lead = leads[0]; if (!lead) throw new Error("Lead not found");
+        if (!lead.consentObtained) { await updateRun("failed", 0, `Blocked: ${lead.companyName} has not been verified for outreach yet. Verify the lead on the Leads page first.`); return; }
+        await updateRun("running", 40, `Composing AI outreach for ${lead.companyName}...`);
+        const emailSent = await runOutreachForLead(blink, env, lead, hasEmailProvider);
+        await updateRun("success", 100, `Outreach sent for ${lead.companyName}. Email${emailSent ? " delivered" : lead.contactEmail ? " queued (no email provider key)" : " skipped (no email on file)"}.`);
+        return;
       }
-      await blink.db.outreachAnalytics.create({ id: crypto.randomUUID(), sequenceId: seqId, leadId, step: 1, eventType: "sent", metadata: JSON.stringify({ channel: "email" }) });
-      let emailSent = false;
-      if (lead.contactEmail && hasEmailProvider) {
-        await updateRun("running", 75, `Sending outreach email to ${lead.contactEmail}...`);
-        emailSent = await sendEmail(env, lead.contactEmail, `Preview site ready for ${lead.companyName}`, buildOutreachEmail(lead.contactName, lead.companyName, emailBody));
+      // Batch mode: send to every verified lead that's ready but hasn't been contacted yet
+      await updateRun("running", 10, "Scanning pipeline for verified leads ready for outreach...");
+      const audited = await blink.db.leads.list({ where: { status: "audited" }, limit: 10 }) as any[];
+      const candidates = audited.filter((l: any) => !!l.consentObtained);
+      if (candidates.length === 0) { await updateRun("success", 100, "No verified leads pending outreach. Verify a lead on the Leads page first."); return; }
+      let done = 0;
+      for (const lead of candidates) {
+        await updateRun("running", 10 + Math.round((done / candidates.length) * 85), `Sending outreach to ${lead.companyName} (${done + 1}/${candidates.length})...`);
+        await runOutreachForLead(blink, env, lead, hasEmailProvider);
+        done++;
       }
-      await blink.db.leads.update(leadId, { status: "outreach_sent" });
-      await updateRun("success", 100, `Outreach sent for ${lead.companyName}. Email${emailSent ? " delivered" : lead.contactEmail ? " queued (no email provider key)" : " skipped (no email on file)"}.`);
+      await updateRun("success", 100, `Batch complete: outreach sent to ${done} verified lead(s).`);
       return;
     }
 
@@ -146,44 +151,28 @@ export async function runOrchestration(
 
     // ─── Invoicing (real Stripe invoice) ───────────────────────────────────────
     if (agentName === "Invoicing") {
-      if (!leadId) throw new Error("leadId required");
       if (!stripeKey) { await updateRun("failed", 0, "STRIPE_SECRET_KEY not configured — cannot create a real invoice."); return; }
-      const existing = await blink.db.invoices.list({ where: { leadId }, limit: 1 }) as any[];
-      if (existing.length > 0) { await updateRun("success", 100, "Invoice already exists for this lead."); return; }
-      const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
-      const lead = leads[0]; if (!lead) throw new Error("Lead not found");
-      if (!lead.consentObtained) { await updateRun("failed", 0, `Blocked: ${lead.companyName} has not been verified yet. Verify the lead on the Leads page first.`); return; }
-
-      await updateRun("running", 30, `Creating Stripe customer for ${lead.companyName}...`);
       const stripe = new Stripe(stripeKey);
-      const amountCents = Math.round(growthPackagePrice * 100);
-      const customer = await findOrCreateCustomer(stripe, lead.contactEmail || "", lead.contactName || lead.companyName);
 
-      await updateRun("running", 60, "Generating and finalizing Stripe invoice...");
-      const invoice = await createAndFinalizeInvoice(stripe, {
-        customerId: customer.id,
-        amountCents,
-        description: `Digital Agency Growth Package — ${lead.companyName}`,
-      });
-
-      const invoiceId = crypto.randomUUID();
-      await blink.db.invoices.create({ id: invoiceId, leadId, amount: growthPackagePrice, status: "open", stripeInvoiceId: invoice.id });
-      await blink.db.invoiceReminders.create({ id: crypto.randomUUID(), invoiceId, reminderType: "initial", status: "pending", escalationLevel: 1 });
-      await blink.db.leads.update(leadId, { status: "proposal" });
-
-      const formattedPrice = growthPackagePrice.toLocaleString();
-      let emailSent = false;
-      if (lead.contactEmail && hasEmailProvider && invoice.hosted_invoice_url) {
-        emailSent = await sendEmail(env, lead.contactEmail, `Invoice ready — Digital Agency Growth Package ($${formattedPrice})`,
-          `<div style="font-family:Arial,sans-serif;max-width:600px;color:#333;line-height:1.6">
-            <p>Hi ${lead.contactName || "there"},</p>
-            <p>Your <strong>Digital Agency Growth Package</strong> invoice for <strong>$${formattedPrice}</strong> is ready.</p>
-            <p><a href="${invoice.hosted_invoice_url}" style="background:#0D9488;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">View & Pay Invoice</a></p>
-            <hr style="border:none;border-top:1px solid #eee;margin:20px 0"/>
-            <p style="color:#888;font-size:12px">— AgentOrch<br/><a href="https://agentorch.io" style="color:#0D9488">agentorch.io</a></p>
-          </div>`);
+      if (leadId) {
+        const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
+        const lead = leads[0]; if (!lead) throw new Error("Lead not found");
+        const result = await invoiceLead(blink, env, stripe, lead, growthPackagePrice, hasEmailProvider);
+        await updateRun(result.ok ? "success" : "failed", result.ok ? 100 : 0, result.message);
+        return;
       }
-      await updateRun("success", 100, `Real Stripe invoice ${invoice.id} created for $${formattedPrice} (${lead.companyName}).${emailSent ? " Emailed to customer." : lead.contactEmail ? " (No email provider key — email not sent, use hosted link.)" : " (No contact email on file.)"}`);
+      // Batch mode: invoice every verified, qualified lead that doesn't have an open/paid invoice yet
+      await updateRun("running", 10, "Scanning pipeline for qualified leads ready to invoice...");
+      const candidates = (await blink.db.leads.list({ where: { status: "qualified" }, limit: 10 }) as any[])
+        .filter((l: any) => !!l.consentObtained);
+      if (candidates.length === 0) { await updateRun("success", 100, "No verified, qualified leads pending invoicing."); return; }
+      let invoiced = 0, skipped = 0;
+      for (const lead of candidates) {
+        await updateRun("running", 10 + Math.round((invoiced / candidates.length) * 85), `Invoicing ${lead.companyName}...`);
+        const result = await invoiceLead(blink, env, stripe, lead, growthPackagePrice, hasEmailProvider);
+        if (result.ok) invoiced++; else skipped++;
+      }
+      await updateRun("success", 100, `Batch complete: ${invoiced} invoice(s) created, ${skipped} skipped.`);
       return;
     }
 
@@ -199,7 +188,7 @@ export async function runOrchestration(
     if (agentName === "Full Pipeline" || agentName === "Coordinator") {
       const niche = body.niche || "commercial bridge lender";
       const location = body.location || "Southern California";
-      await runFullPipeline(blink, updateRun, env, mapsKey, niche, location, growthPackagePrice);
+      await runFullPipeline(blink, updateRun, env, mapsKey, niche, location, growthPackagePrice, hasEmailProvider);
       return;
     }
 
@@ -208,6 +197,79 @@ export async function runOrchestration(
     console.error("Orchestration error:", error);
     try { const b2 = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY }); await b2.db.agentRuns.update(runId, { status: "failed", progressPercent: 0, logsText: `Error: ${error.message}`, finishedAt: new Date().toISOString() }); } catch {}
   }
+}
+
+async function invoiceLead(blink: any, env: Record<string, string>, stripe: Stripe, lead: any, growthPackagePrice: number, hasEmailProvider: boolean): Promise<{ ok: boolean; message: string }> {
+  // Only an open/paid invoice blocks re-invoicing — a voided/uncollectible one should not.
+  const existing = await blink.db.invoices.list({ where: { leadId: lead.id }, limit: 5 }) as any[];
+  if (existing.some((inv: any) => inv.status === "open" || inv.status === "paid")) {
+    return { ok: true, message: `Invoice already exists for ${lead.companyName}.` };
+  }
+  if (!lead.consentObtained) {
+    return { ok: false, message: `Blocked: ${lead.companyName} has not been verified yet. Verify the lead on the Leads page first.` };
+  }
+
+  const amountCents = Math.round(growthPackagePrice * 100);
+  const customer = await findOrCreateCustomer(stripe, lead.contactEmail || "", lead.contactName || lead.companyName);
+  const invoice = await createAndFinalizeInvoice(stripe, {
+    customerId: customer.id,
+    amountCents,
+    description: `Digital Agency Growth Package — ${lead.companyName}`,
+  });
+
+  const invoiceId = crypto.randomUUID();
+  await blink.db.invoices.create({ id: invoiceId, leadId: lead.id, amount: growthPackagePrice, status: "open", stripeInvoiceId: invoice.id });
+  await blink.db.invoiceReminders.create({ id: crypto.randomUUID(), invoiceId, reminderType: "initial", status: "pending", escalationLevel: 1 });
+  await blink.db.leads.update(lead.id, { status: "proposal" });
+
+  const formattedPrice = growthPackagePrice.toLocaleString();
+  let emailSent = false;
+  if (lead.contactEmail && hasEmailProvider && invoice.hosted_invoice_url) {
+    emailSent = await sendEmail(env, lead.contactEmail, `Invoice ready — Digital Agency Growth Package ($${formattedPrice})`,
+      `<div style="font-family:Arial,sans-serif;max-width:600px;color:#333;line-height:1.6">
+        <p>Hi ${lead.contactName || "there"},</p>
+        <p>Your <strong>Digital Agency Growth Package</strong> invoice for <strong>$${formattedPrice}</strong> is ready.</p>
+        <p><a href="${invoice.hosted_invoice_url}" style="background:#0D9488;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">View & Pay Invoice</a></p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0"/>
+        <p style="color:#888;font-size:12px">— AgentOrch<br/><a href="https://agentorch.io" style="color:#0D9488">agentorch.io</a></p>
+      </div>`);
+  }
+  return { ok: true, message: `Real Stripe invoice ${invoice.id} created for $${formattedPrice} (${lead.companyName}).${emailSent ? " Emailed to customer." : lead.contactEmail ? " (No email provider key — email not sent, use hosted link.)" : " (No contact email on file.)"}` };
+}
+
+async function scoreLead(blink: any, lead: any, growthPackagePrice: number) {
+  const { overallScore, conversionLikelihood, issues } = scoreLeadFromPresence({ website: lead.website, phone: lead.phone });
+  const issuesJson = JSON.stringify(issues);
+  const existing = await blink.db.leadScores.list({ where: { leadId: lead.id }, limit: 1 }) as any[];
+  if (existing.length > 0) {
+    await blink.db.leadScores.update(existing[0].id, { overallScore, conversionLikelihood, issuesJson, potentialServicesValue: growthPackagePrice });
+  } else {
+    await blink.db.leadScores.create({ id: crypto.randomUUID(), leadId: lead.id, overallScore, conversionLikelihood, issuesJson, potentialServicesValue: growthPackagePrice });
+  }
+  await blink.db.leads.update(lead.id, { status: "scored", leadScore: overallScore });
+}
+
+async function runOutreachForLead(blink: any, env: Record<string, string>, lead: any, hasEmailProvider: boolean): Promise<boolean> {
+  const emailBody = await generateAIContent(env, `Write a 4-sentence cold outreach email for ${lead.companyName} (${lead.contactName || "decision maker"}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`);
+  const existingSeq = await blink.db.outreachSequences.list({ where: { leadId: lead.id }, limit: 1 }) as any[];
+  let sequenceId: string;
+  let step: number;
+  if (existingSeq.length === 0) {
+    sequenceId = crypto.randomUUID();
+    step = 1;
+    await blink.db.outreachSequences.create({ id: sequenceId, leadId: lead.id, step, status: "sent", emailSentAt: new Date().toISOString(), lastSentAt: new Date().toISOString(), lastEmailBody: emailBody });
+  } else {
+    sequenceId = existingSeq[0].id;
+    step = Math.min((existingSeq[0].step || 1) + 1, 5);
+    await blink.db.outreachSequences.update(sequenceId, { step, lastSentAt: new Date().toISOString(), lastEmailBody: emailBody });
+  }
+  await blink.db.outreachAnalytics.create({ id: crypto.randomUUID(), sequenceId, leadId: lead.id, step, eventType: "sent", metadata: JSON.stringify({ channel: "email" }) });
+  let emailSent = false;
+  if (lead.contactEmail && hasEmailProvider) {
+    emailSent = await sendEmail(env, lead.contactEmail, `Preview site ready for ${lead.companyName}`, buildOutreachEmail(lead.contactName, lead.companyName, emailBody));
+  }
+  await blink.db.leads.update(lead.id, { status: "outreach_sent" });
+  return emailSent;
 }
 
 async function generateAssetsForLead(blink: any, env: Record<string, string>, lead: any) {
@@ -224,7 +286,7 @@ async function generateAssetsForLead(blink: any, env: Record<string, string>, le
   await blink.db.leads.update(lead.id, { status: "audited" });
 }
 
-async function runFullPipeline(blink: any, updateRun: Function, env: Record<string, string>, mapsKey: string, niche: string, location: string, growthPackagePrice: number) {
+async function runFullPipeline(blink: any, updateRun: Function, env: Record<string, string>, mapsKey: string, niche: string, location: string, growthPackagePrice: number, hasEmailProvider: boolean) {
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
   // Stage 1: Discovery (Maps → AI fallback)
   await updateRun("running", 8, `Stage 1: Searching "${niche}" in "${location}"...`);
@@ -263,13 +325,23 @@ async function runFullPipeline(blink: any, updateRun: Function, env: Record<stri
     await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: copy });
     await blink.db.leads.update(lead.id, { status: "audited" });
   }
-  await updateRun("running", 68, "Stage 4: Creating outreach sequences...");
-  // Stage 4: Outreach
+  await updateRun("running", 68, "Stage 4: Creating outreach sequences (consented leads only)...");
+  // Stage 4: Outreach — freshly discovered leads default to consentObtained: 0, so
+  // this stage only sends for leads a human has already verified via the Leads page.
+  // Un-consented leads stay at "audited" so they show up for manual review/verification.
+  let outreachSent = 0, outreachSkipped = 0;
   for (const lead of newLeads) {
+    const freshLead = (await blink.db.leads.list({ where: { id: lead.id }, limit: 1 }) as any[])[0];
+    if (!freshLead?.consentObtained) { outreachSkipped++; continue; }
     const seqId = crypto.randomUUID();
-    await blink.db.outreachSequences.create({ id: seqId, leadId: lead.id, step: 1, status: "sent", emailSentAt: new Date().toISOString(), lastSentAt: new Date().toISOString() });
+    const emailBody = await generateAIContent(env, `Write a 4-sentence cold outreach email for ${lead.companyName} (${niche} in ${lead.address || location}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`);
+    await blink.db.outreachSequences.create({ id: seqId, leadId: lead.id, step: 1, status: "sent", emailSentAt: new Date().toISOString(), lastSentAt: new Date().toISOString(), lastEmailBody: emailBody });
     await blink.db.outreachAnalytics.create({ id: crypto.randomUUID(), sequenceId: seqId, leadId: lead.id, step: 1, eventType: "sent", metadata: JSON.stringify({ automated: true }) });
+    if (freshLead.contactEmail && hasEmailProvider) {
+      await sendEmail(env, freshLead.contactEmail, `Preview site ready for ${lead.companyName}`, buildOutreachEmail(freshLead.contactName, lead.companyName, emailBody));
+    }
     await blink.db.leads.update(lead.id, { status: "outreach_sent" });
+    outreachSent++;
   }
   await updateRun("running", 85, "Stage 5: Qualifying Agent reviewing...");
   // Stage 5: Qualify high-scorers
@@ -277,5 +349,5 @@ async function runFullPipeline(blink: any, updateRun: Function, env: Record<stri
   for (const lead of newLeads) {
     if ((lead.leadScore || 0) >= 60) { await blink.db.leads.update(lead.id, { status: "qualified" }); qualified++; }
   }
-  await updateRun("success", 100, `Full pipeline: ${newLeads.length} discovered → scored → AI-audited → outreach created → ${qualified} auto-qualified. Niche: "${niche}", Location: "${location}".`);
+  await updateRun("success", 100, `Full pipeline: ${newLeads.length} discovered → scored → AI-audited → ${outreachSent} outreach sent (${outreachSkipped} awaiting verification) → ${qualified} auto-qualified. Niche: "${niche}", Location: "${location}".`);
 }

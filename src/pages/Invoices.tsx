@@ -83,7 +83,8 @@ export function InvoicesPage() {
         <div className="p-6 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Passive Revenue (MTD)</p>
-            <p className="text-3xl font-bold text-white mt-1">${(stats?.passiveRevenue || 0).toLocaleString()}</p>
+            <p className="text-3xl font-bold text-white mt-1">${(stats?.passiveRevenueMTD || 0).toLocaleString()}</p>
+            <p className="text-[10px] text-slate-500 mt-1">${(stats?.passiveRevenue || 0).toLocaleString()} all-time</p>
           </div>
           <div className="p-3 rounded-full bg-emerald-500/10 text-emerald-500">
             <DollarSign className="w-6 h-6" />

@@ -100,5 +100,6 @@ export interface PipelineStats {
   responseRate: number
   conversionRate: number
   passiveRevenue: number
+  passiveRevenueMTD: number
   avgLeadScore: number
 }

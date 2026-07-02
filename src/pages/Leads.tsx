@@ -129,19 +129,21 @@ export function LeadsPage() {
     lead.contactEmail.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
+
   const handleExportCSV = () => {
     if (!leads) return
     const headers = ['Company', 'Contact', 'Email', 'Website', 'Status', 'Consent']
     const rows = leads.map(l => [
-      l.companyName, 
-      l.contactName, 
-      l.contactEmail, 
-      l.website, 
-      l.status, 
+      l.companyName,
+      l.contactName,
+      l.contactEmail,
+      l.website,
+      l.status,
       l.consentObtained ? 'Yes' : 'No'
     ])
-    
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
+
+    const csvContent = [headers, ...rows].map(e => e.map(csvEscape).join(",")).join("\n")
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     const url = URL.createObjectURL(blob)
@@ -363,7 +365,9 @@ export function LeadsPage() {
                       <option value="responded">Responded</option>
                       <option value="qualified">Qualified</option>
                       <option value="proposal">Proposal</option>
+                      <option value="onboarded">Onboarded</option>
                       <option value="client">Client</option>
+                      <option value="lost">Lost</option>
                     </select>
                   </TableCell>
                   <TableCell>

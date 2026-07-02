@@ -71,6 +71,13 @@ export async function trackAffiliateConversion(
 ): Promise<{ success: boolean; commissionAmount?: number; error?: string }> {
   const { referralCode, leadId, invoiceId, amount } = params;
   if (!referralCode) return { success: false, error: "No referral code" };
+  // Idempotency guard: Stripe fires invoice.paid AND invoice.payment_succeeded for the
+  // same payment (and can redeliver either on retry). Without this check, concurrent or
+  // duplicate webhook deliveries would double-credit the affiliate for one real payment.
+  if (invoiceId) {
+    const alreadyTracked = (await blink.db.affiliateReferrals.list({ where: { invoiceId }, limit: 1 })) as any[];
+    if (alreadyTracked.length > 0) return { success: true, commissionAmount: alreadyTracked[0].commissionAmount };
+  }
   const affiliates = (await blink.db.affiliates.list({ where: { referralCode }, limit: 1 })) as any[];
   if (!affiliates.length) return { success: false, error: "Affiliate not found" };
   const affiliate = affiliates[0];

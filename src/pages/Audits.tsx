@@ -12,7 +12,7 @@ import { Search, FileText, Sparkles, Loader2, ExternalLink, AlertTriangle } from
 import { toast } from 'sonner'
 
 export function AuditsPage() {
-  const { data: leads, isLoading } = useLeads()
+  const { data: leads, isLoading, isError, error } = useLeads()
   const { data: assets } = useAssets()
   const { data: scores } = useScores()
   const { data: agentRuns } = useAgentRuns()
@@ -80,6 +80,10 @@ export function AuditsPage() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12 text-slate-500">Loading leads...</TableCell>
+              </TableRow>
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12 text-red-400">Failed to load leads: {(error as Error)?.message || 'Unknown error'}</TableCell>
               </TableRow>
             ) : leads?.length === 0 ? (
               <TableRow>

@@ -184,17 +184,28 @@ const BillingPage: React.FC = () => {
                       {price.unit_amount === 0 ? 'Custom' : `$${(price.unit_amount / 100).toFixed(0)}`}
                       <span className="text-xl text-gray-400 font-medium">/{price.recurring.interval}</span>
                     </p>
-                    <Button
-                      onClick={() => handleSubscribe(price.id, price.recurring.interval)}
-                      className={`w-full py-3 text-lg font-semibold rounded-lg transition-all duration-300 ${product.name === 'Pro' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}
-                      disabled={subscribingPriceId === price.id || (product.name === 'Enterprise/Business' && price.unit_amount === 0)}
-                    >
-                      {subscribingPriceId === price.id ? (
-                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                      ) : (
-                        product.name === 'Enterprise/Business' && price.unit_amount === 0 ? 'Contact Sales' : `Select ${product.name} (${price.recurring.interval})`
-                      )}
-                    </Button>
+                    {product.name === 'Enterprise/Business' && price.unit_amount === 0 ? (
+                      <Button
+                        asChild
+                        className="w-full py-3 text-lg font-semibold rounded-lg transition-all duration-300 bg-teal-600 hover:bg-teal-700"
+                      >
+                        <a href={`mailto:${user?.email || ''}?subject=${encodeURIComponent('Enterprise plan inquiry')}`}>
+                          Contact Sales
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => handleSubscribe(price.id, price.recurring.interval)}
+                        className={`w-full py-3 text-lg font-semibold rounded-lg transition-all duration-300 ${product.name === 'Pro' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+                        disabled={subscribingPriceId === price.id}
+                      >
+                        {subscribingPriceId === price.id ? (
+                          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        ) : (
+                          `Select ${product.name} (${price.recurring.interval})`
+                        )}
+                      </Button>
+                    )}
                     {product.name === 'Pro' && price.recurring.interval === 'year' && (
                       <p className="text-sm text-green-400 text-center mt-2">Save ~20% annually!</p>
                     )}

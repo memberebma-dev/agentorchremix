@@ -142,6 +142,13 @@ export function usePipelineStats() {
       ])
 
       const responseCount = await blink.db.leads.count({ where: { status: 'responded' } })
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      // Invoices don't carry a separate "paid at" timestamp, so createdAt is the
+      // closest approximation available for month-to-date revenue.
+      const passiveRevenueMTD = (paidInvoices as Invoice[])
+        .filter(inv => new Date(inv.createdAt) >= monthStart)
+        .reduce((sum, inv) => sum + Number(inv.amount), 0)
       const passiveRevenue = (paidInvoices as Invoice[]).reduce((sum, inv) => sum + Number(inv.amount), 0)
       const scores = (allScores as LeadScore[])
       const avgLeadScore = scores.length > 0
@@ -158,6 +165,7 @@ export function usePipelineStats() {
         responseRate: totalOutreach > 0 ? (responseCount / totalOutreach) * 100 : 0,
         conversionRate: totalLeads > 0 ? (totalClients / totalLeads) * 100 : 0,
         passiveRevenue,
+        passiveRevenueMTD,
         avgLeadScore
       } as PipelineStats
     },
@@ -279,21 +287,33 @@ export function useStartAgent() {
         startedAt: new Date().toISOString()
       })
       
-      // 2. Fire the orchestrator edge function via direct fetch (fire-and-forget)
-      //    Using direct fetch because blink.functions.invoke may wrap payload differently
+      // 2. Fire the orchestrator edge function via direct fetch.
+      //    Using direct fetch because blink.functions.invoke may wrap payload differently.
       //    Always include the user's saved pipeline config so price/threshold changes in
       //    Settings actually affect what the backend does, instead of being local-only.
+      //    We await just long enough to confirm the backend accepted the request — the
+      //    actual agent work still runs in the background on the server — so a network
+      //    failure or non-2xx response immediately flips the run to "failed" instead of
+      //    leaving a "running" card that spins forever with no user-visible error.
       const config = loadPipelineConfig()
-      fetch(ORCHESTRATOR_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          runId: run.id, agentName, leadId, niche, location,
-          amount: config.growthPackagePrice,
-          threshold: config.leadScoreThreshold,
-        }),
-      }).catch((err) => console.error('Orchestrator invoke error:', err))
-      
+      try {
+        const res = await fetch(ORCHESTRATOR_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId: run.id, agentName, leadId, niche, location,
+            amount: config.growthPackagePrice,
+            threshold: config.leadScoreThreshold,
+          }),
+        })
+        if (!res.ok) {
+          const text = await res.text().catch(() => res.statusText)
+          await blink.db.agentRuns.update(run.id, { status: 'failed', logsText: `Backend rejected request: ${text}`, finishedAt: new Date().toISOString() })
+        }
+      } catch (err: any) {
+        await blink.db.agentRuns.update(run.id, { status: 'failed', logsText: `Could not reach backend: ${err.message}`, finishedAt: new Date().toISOString() })
+      }
+
       return run
     },
     onSuccess: (_data, variables) => {

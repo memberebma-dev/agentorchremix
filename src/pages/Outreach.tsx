@@ -9,15 +9,16 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Send, 
-  Mail, 
-  MessageSquare, 
-  Clock, 
+import {
+  Send,
+  Mail,
+  MessageSquare,
+  Clock,
   Play,
   ChevronRight,
   Eye,
-  Loader2
+  Loader2,
+  ListChecks
 } from 'lucide-react'
 import { useState } from 'react'
 import { 
@@ -34,7 +35,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 export function OutreachPage() {
   const { data: leads } = useLeads()
-  const { data: campaigns, isLoading } = useCampaigns()
+  const { data: campaigns, isLoading, isError, error } = useCampaigns()
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
   const queryClient = useQueryClient()
@@ -43,13 +44,23 @@ export function OutreachPage() {
   const [isMarkingReplied, setIsMarkingReplied] = useState(false)
 
   const isOutreachRunning = agentRuns?.some(run => run.agentName === 'Outreach' && run.status === 'running')
+  const isQualifyingRunning = agentRuns?.some(run => run.agentName === 'Qualifying' && run.status === 'running')
 
   const handleStartOutreach = async () => {
     try {
       await startAgent.mutateAsync({ agentName: 'Outreach' })
-      toast.success('Autonomous outreach sequence started')
+      toast.success('Sending outreach to verified leads')
     } catch (error) {
       toast.error('Failed to start outreach')
+    }
+  }
+
+  const handleRunQualifying = async () => {
+    try {
+      await startAgent.mutateAsync({ agentName: 'Qualifying' })
+      toast.success('Qualifying agent running — advancing replied/high-score leads')
+    } catch (error) {
+      toast.error('Failed to start Qualifying agent')
     }
   }
 
@@ -73,7 +84,7 @@ export function OutreachPage() {
       setSelectedSequence((s: any) => s ? { ...s, status: 'replied' } : s)
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
       queryClient.invalidateQueries({ queryKey: ['outreachAnalytics'] })
-      toast.success('Marked as replied — Qualifying agent will pick this up next run')
+      toast.success('Marked as replied — click "Run Qualifying" above to advance it')
     } catch {
       toast.error('Failed to mark as replied')
     } finally {
@@ -105,14 +116,27 @@ export function OutreachPage() {
           <h1 className="text-2xl font-bold text-white tracking-tight italic">Smart Outreach Flow</h1>
           <p className="text-sm text-slate-400 mt-1">Multi-channel value-driven engagement sequences</p>
         </div>
-        <Button 
-          className="bg-teal-600 hover:bg-teal-500 gap-2"
-          onClick={handleStartOutreach}
-          disabled={isOutreachRunning || startAgent.isPending}
-        >
-          {isOutreachRunning || startAgent.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          Start New Sequence
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="border-slate-700 text-slate-300 hover:text-white gap-2"
+            onClick={handleRunQualifying}
+            disabled={isQualifyingRunning || startAgent.isPending}
+            title="Advance replied/high-score leads toward Proposal, expire stale ones"
+          >
+            {isQualifyingRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListChecks className="w-4 h-4" />}
+            Run Qualifying
+          </Button>
+          <Button
+            className="bg-teal-600 hover:bg-teal-500 gap-2"
+            onClick={handleStartOutreach}
+            disabled={isOutreachRunning || startAgent.isPending}
+            title="Sends real outreach email to every verified, audited lead not yet contacted"
+          >
+            {isOutreachRunning || startAgent.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            Start New Sequence
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -141,6 +165,10 @@ export function OutreachPage() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12 text-slate-500">Loading sequences...</TableCell>
+              </TableRow>
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12 text-red-400">Failed to load sequences: {(error as Error)?.message || 'Unknown error'}</TableCell>
               </TableRow>
             ) : campaigns?.length === 0 ? (
               <TableRow>

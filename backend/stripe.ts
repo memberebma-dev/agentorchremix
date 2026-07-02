@@ -85,9 +85,27 @@ stripeApp.post('/create-payment-link', async (c) => {
 
 stripeApp.post('/create-one-off-invoice', async (c) => {
   try {
-    const stripe = getStripe(c.env as Record<string, string>);
-    const { customerId, amount, description } = await c.req.json();
+    const env = c.env as Record<string, string>;
+    const stripe = getStripe(env);
+    const { customerId, amount, description, leadId } = await c.req.json();
     const invoice = await createAndFinalizeInvoice(stripe, { customerId, amountCents: amount, description });
+
+    // Persist locally so ad-hoc invoices show up on the Invoices page, get picked
+    // up by /reminders/run, and get marked paid by the Stripe webhook — otherwise
+    // they only exist in Stripe and are invisible to the rest of the app.
+    try {
+      const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
+      await blink.db.invoices.create({
+        id: crypto.randomUUID(),
+        leadId: leadId || '',
+        amount: amount / 100,
+        status: 'open',
+        stripeInvoiceId: invoice.id,
+      });
+    } catch (dbErr) {
+      console.error('Failed to persist ad-hoc invoice locally:', dbErr);
+    }
+
     return c.json({ invoiceId: invoice.id, hostedInvoiceUrl: invoice.hosted_invoice_url });
   } catch (error: any) {
     return c.json({ error: error.message }, 400);

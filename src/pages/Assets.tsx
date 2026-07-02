@@ -42,7 +42,7 @@ function HostedStatusBadge({ url }: { url?: string }) {
 
 export function AssetsPage() {
   const { data: leads } = useLeads()
-  const { data: assets, isLoading } = useAssets()
+  const { data: assets, isLoading, isError, error } = useAssets()
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
   const [selectedAsset, setSelectedAsset] = useState<any>(null)
@@ -61,6 +61,15 @@ export function AssetsPage() {
 
   const getLeadName = (leadId: string) => {
     return leads?.find(l => l.id === leadId)?.companyName || 'Unknown Lead'
+  }
+
+  const handleRegenerate = async (leadId: string) => {
+    try {
+      await startAgent.mutateAsync({ agentName: 'Asset Generation', leadId })
+      toast.success('Regenerating assets for this lead')
+    } catch (error) {
+      toast.error('Failed to start regeneration')
+    }
   }
 
   return (
@@ -95,6 +104,10 @@ export function AssetsPage() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12 text-slate-500">Retrieving assets...</TableCell>
+              </TableRow>
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12 text-red-400">Failed to load assets: {(error as Error)?.message || 'Unknown error'}</TableCell>
               </TableRow>
             ) : assets?.length === 0 ? (
               <TableRow>
@@ -142,7 +155,12 @@ export function AssetsPage() {
                           View
                         </a>
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white">
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white"
+                        onClick={() => handleRegenerate(asset.leadId)}
+                        disabled={isGenerating || startAgent.isPending}
+                        title="Regenerate this asset"
+                      >
                         <RefreshCw className="w-3.5 h-3.5" />
                       </Button>
                     </div>

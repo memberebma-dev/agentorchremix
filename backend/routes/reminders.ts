@@ -19,15 +19,19 @@ remindersApp.post("/run", async (c) => {
       let level = 1; let reminderType = "initial";
       if (ageHours > 168) { level = 3; reminderType = "final_notice"; }
       else if (ageHours > 72) { level = 2; reminderType = "follow_up"; }
-      const alreadySentAtLevel = existing.some((r: any) => r.escalationLevel === level && r.status === "sent");
-      if (alreadySentAtLevel) continue;
+      // A row at this level in ANY non-failed terminal state (sent, or already
+      // recorded as skipped for lack of contact info) blocks re-creating it —
+      // not just "sent" — otherwise leads with no email/provider accumulate an
+      // unbounded stack of duplicate "pending" rows on every run.
+      const alreadyHandledAtLevel = existing.some((r: any) => r.escalationLevel === level && r.status !== "failed");
+      if (alreadyHandledAtLevel) continue;
 
       const reminderId = crypto.randomUUID();
-      await blink.db.invoiceReminders.create({ id: reminderId, invoiceId: inv.id, reminderType, status: "pending", escalationLevel: level });
-
       const leads = await blink.db.leads.list({ where: { id: inv.leadId }, limit: 1 }) as any[];
       const lead = leads[0];
+
       if (lead?.contactEmail && hasEmailProvider) {
+        await blink.db.invoiceReminders.create({ id: reminderId, invoiceId: inv.id, reminderType, status: "pending", escalationLevel: level });
         const subjects: Record<number, string> = {
           1: `Invoice ready — $${Number(inv.amount).toLocaleString()} | ${lead.companyName}`,
           2: `Follow-up: Outstanding invoice for ${lead.companyName}`,
@@ -41,6 +45,11 @@ remindersApp.post("/run", async (c) => {
         const sent = await sendEmail(env, lead.contactEmail, subjects[level] || subjects[1], bodies[level] || bodies[1]);
         await blink.db.invoiceReminders.update(reminderId, { status: sent ? "sent" : "failed", sentAt: new Date().toISOString() });
         if (sent) emailsSent++;
+      } else {
+        // No usable email path — record it as skipped so it doesn't get re-attempted
+        // every run, but don't count it as processed/sent activity.
+        await blink.db.invoiceReminders.create({ id: reminderId, invoiceId: inv.id, reminderType, status: "skipped", escalationLevel: level });
+        continue;
       }
       processed++;
     }
