@@ -69,13 +69,15 @@ export function AffiliatesPage() {
     }
   }
 
-  const handleDeactivate = async (id: string) => {
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Permanently delete ${name} and their referral history? This cannot be undone.`)) return
     try {
-      await fetch(`${BACKEND_URL}/affiliates/${id}`, { method: 'DELETE' })
-      toast.success('Affiliate deactivated')
+      const res = await fetch(`${BACKEND_URL}/affiliates/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      toast.success('Affiliate deleted')
       await fetchAffiliates()
     } catch {
-      toast.error('Failed to deactivate affiliate')
+      toast.error('Failed to delete affiliate')
     }
   }
 
@@ -179,7 +181,8 @@ export function AffiliatesPage() {
                         <Link2 className="w-3.5 h-3.5" />
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400"
-                        onClick={() => handleDeactivate(aff.id)}>
+                        title="Permanently delete"
+                        onClick={() => handleDelete(aff.id, aff.name)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>

@@ -32,11 +32,27 @@ affiliatesApp.post("/", async (c) => {
   }
 });
 
-affiliatesApp.delete("/:id", async (c) => {
+affiliatesApp.patch("/:id/deactivate", async (c) => {
   const env = c.env as Record<string, string>;
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
     await blink.db.affiliates.update(c.req.param("id"), { status: "inactive" });
+    return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+affiliatesApp.delete("/:id", async (c) => {
+  const env = c.env as Record<string, string>;
+  const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
+  const id = c.req.param("id");
+  try {
+    const referrals = (await blink.db.affiliateReferrals.list({ where: { affiliateId: id }, limit: 500 })) as any[];
+    for (const r of referrals) {
+      await blink.db.affiliateReferrals.delete(r.id);
+    }
+    await blink.db.affiliates.delete(id);
     return c.json({ success: true });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
