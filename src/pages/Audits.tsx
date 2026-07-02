@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Search, FileText, Sparkles, Loader2, ExternalLink, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
+import { getAssetPreviewUrl } from '@/lib/api'
 
 export function AuditsPage() {
   const { data: leads, isLoading, isError, error } = useLeads()
@@ -168,9 +169,9 @@ export function AuditsPage() {
           )}
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setSelectedLeadId(null)}>Close</Button>
-            {selectedAudit?.hostedUrl && (
+            {selectedAudit && (
               <Button className="bg-teal-600 hover:bg-teal-500 gap-2" asChild>
-                <a href={selectedAudit.hostedUrl} target="_blank" rel="noreferrer">
+                <a href={getAssetPreviewUrl(selectedAudit)} target="_blank" rel="noreferrer">
                   <ExternalLink className="w-4 h-4" /> Open Hosted Report
                 </a>
               </Button>

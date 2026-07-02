@@ -30,6 +30,7 @@ import {
 import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 import { toast } from 'sonner'
 import { useUrlLive } from '@/hooks/use-url-live'
+import { getAssetPreviewUrl } from '@/lib/api'
 
 function HostedStatusBadge({ url }: { url?: string }) {
   const { data: isLive, isLoading } = useUrlLive(url)
@@ -142,7 +143,7 @@ export function AssetsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <HostedStatusBadge url={asset.hostedUrl} />
+                    <HostedStatusBadge url={getAssetPreviewUrl(asset)} />
                   </TableCell>
                   <TableCell className="text-xs text-slate-500">
                     {new Date(asset.generatedAt).toLocaleString()}
@@ -150,7 +151,7 @@ export function AssetsPage() {
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button variant="ghost" size="sm" className="h-8 gap-2 text-slate-400 hover:text-white" asChild>
-                        <a href={asset.hostedUrl} target="_blank" rel="noreferrer">
+                        <a href={getAssetPreviewUrl(asset)} target="_blank" rel="noreferrer">
                           <Eye className="w-3.5 h-3.5" />
                           View
                         </a>
@@ -194,7 +195,7 @@ export function AssetsPage() {
                   </div>
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Hosting</p>
-                    <HostedStatusBadge url={selectedAsset.hostedUrl} />
+                    <HostedStatusBadge url={getAssetPreviewUrl(selectedAsset)} />
                   </div>
                 </div>
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
@@ -206,9 +207,9 @@ export function AssetsPage() {
           )}
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setIsDetailOpen(false)}>Close</Button>
-            {selectedAsset?.hostedUrl && (
+            {selectedAsset && (
               <Button className="bg-teal-600 hover:bg-teal-500" asChild>
-                <a href={selectedAsset.hostedUrl} target="_blank" rel="noreferrer">Open Preview Site</a>
+                <a href={getAssetPreviewUrl(selectedAsset)} target="_blank" rel="noreferrer">Open Preview Site</a>
               </Button>
             )}
           </DialogFooter>
