@@ -204,15 +204,12 @@ const BillingPage: React.FC = () => {
                   </div>
                 ))}
                 <ul className="mt-8 space-y-3 text-gray-300 text-left w-full">
-                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? '500 Pipeline Runs/Month' : product.name === 'Pro' ? '5,000 Pipeline Runs/Month' : '50,000+ Pipeline Runs/Month'}</li>
-                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Basic Agent Orchestration' : product.name === 'Pro' ? 'Advanced Multi-Agent Pipelines' : 'Custom Agents & Workflows'}</li>
-                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Core Integrations' : product.name === 'Pro' ? 'More Connectors' : 'SSO & Custom Integrations'}</li>
-                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> {product.name === 'Starter' ? 'Community Support' : product.name === 'Pro' ? 'Priority Support' : 'Dedicated Account Manager'}</li>
-                  {product.name === 'Pro' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Basic Analytics</li>}
-                  {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Team Seats & User Management</li>}
-                  {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> White-Label Options</li>}
-                  {product.name === 'Enterprise/Business' && <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Priority Feature Requests</li>}
+                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Full access to the AgentOrch pipeline (Lead Discovery, Scoring, Asset Generation, Outreach, Invoicing)</li>
+                  <li className="flex items-center"><CheckIcon className="text-green-500 mr-3 flex-shrink-0" size={20} /> Real-time Analytics dashboard</li>
                 </ul>
+                {product.description && (
+                  <p className="text-xs text-gray-500 mt-4">{product.description}</p>
+                )}
               </CardContent>
               <CardFooter className="text-center text-sm text-gray-500 pt-6">
                 {product.name === 'Pro' && <p className="text-blue-400 font-semibold">Our Most Popular Plan!</p>}

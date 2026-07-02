@@ -97,12 +97,16 @@ export async function discoverLeadsViaAI(
 }
 
 /** Score a lead 0-99 based on real digital presence signals from Google Maps */
+// Note: searchActivityScore and paidAdsActivity were previously computed with Math.random() —
+// no data source available here can honestly measure a third-party business's search/ads activity,
+// so those fields were removed rather than faked. Only overallScore and conversionLikelihood remain,
+// both fully deterministic from real Google Maps presence signals.
 export function scoreLeadFromPresence(p: {
   website?: string;
   phone?: string;
   rating?: number;
   reviewCount?: number;
-}): { overallScore: number; conversionLikelihood: number; searchActivityScore: number; paidAdsActivity: number; issues: string[] } {
+}): { overallScore: number; conversionLikelihood: number; issues: string[] } {
   let score = 45;
   const issues: string[] = [];
 
@@ -117,11 +121,15 @@ export function scoreLeadFromPresence(p: {
   if (!p.phone) { score += 5; issues.push("No phone indexed"); }
 
   const overallScore = Math.min(score, 99);
-  return {
-    overallScore,
-    conversionLikelihood: Math.max(30, Math.min(95, overallScore - 5 + Math.floor(Math.random() * 8))),
-    searchActivityScore: Math.floor(Math.random() * 40) + 15,
-    paidAdsActivity: Math.floor(Math.random() * 25) + 5,
-    issues,
-  };
+
+  // Deterministic conversion-likelihood estimate: weighted opportunity score, boosted by
+  // signals that the business is real/established (reviews, rating) which make them more
+  // reachable/credible prospects, not just "has a big gap."
+  let conversion = 40 + Math.min(overallScore, 60) * 0.5;
+  if ((p.reviewCount || 0) >= 10) conversion += 10;
+  if (p.rating && p.rating >= 4) conversion += 5;
+  if (!p.website) conversion += 5;
+  const conversionLikelihood = Math.max(30, Math.min(95, Math.round(conversion)));
+
+  return { overallScore, conversionLikelihood, issues };
 }

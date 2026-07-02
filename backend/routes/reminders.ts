@@ -29,14 +29,14 @@ remindersApp.post("/run", async (c) => {
       const lead = leads[0];
       if (lead?.contactEmail && hasEmailProvider) {
         const subjects: Record<number, string> = {
-          1: `Invoice ready — ${Number(inv.amount).toLocaleString()} | ${lead.companyName}`,
+          1: `Invoice ready — $${Number(inv.amount).toLocaleString()} | ${lead.companyName}`,
           2: `Follow-up: Outstanding invoice for ${lead.companyName}`,
           3: `⚠️ Final Notice: Overdue invoice — action required`,
         };
         const bodies: Record<number, string> = {
-          1: `<p>Hi ${lead.contactName || "there"},</p><p>Your <strong>Digital Agency Growth Package</strong> invoice of <strong>${Number(inv.amount).toLocaleString()}</strong> is ready.</p>`,
-          2: `<p>Hi ${lead.contactName || "there"},</p><p>Follow-up on your outstanding invoice of <strong>${Number(inv.amount).toLocaleString()}</strong>. Services on hold pending payment.</p>`,
-          3: `<p>Hi ${lead.contactName || "there"},</p><p><strong>Final Notice:</strong> Invoice of <strong>${Number(inv.amount).toLocaleString()}</strong> is overdue. Pay within 24h or slot reassigned.</p>`,
+          1: `<p>Hi ${lead.contactName || "there"},</p><p>Your <strong>Digital Agency Growth Package</strong> invoice of <strong>$${Number(inv.amount).toLocaleString()}</strong> is ready.</p>`,
+          2: `<p>Hi ${lead.contactName || "there"},</p><p>Follow-up on your outstanding invoice of <strong>$${Number(inv.amount).toLocaleString()}</strong>. Services on hold pending payment.</p>`,
+          3: `<p>Hi ${lead.contactName || "there"},</p><p><strong>Final Notice:</strong> Invoice of <strong>$${Number(inv.amount).toLocaleString()}</strong> is overdue. Pay within 24h or slot reassigned.</p>`,
         };
         const sent = await sendEmail(env, lead.contactEmail, subjects[level] || subjects[1], bodies[level] || bodies[1]);
         await blink.db.invoiceReminders.update(reminderId, { status: sent ? "sent" : "failed", sentAt: new Date().toISOString() });

@@ -35,7 +35,8 @@ import {
   Sparkles,
   Receipt,
   Send,
-  Target
+  Target,
+  AlertTriangle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { LeadStatus } from '@/types/pipeline'
@@ -78,6 +79,7 @@ export function LeadsPage() {
         contactEmail: newLead.contactEmail,
         contactName: newLead.contactName,
         phone: newLead.phone,
+        dataSource: 'manual',
         consentObtained: 1,
         status: 'new'
       })
@@ -99,6 +101,7 @@ export function LeadsPage() {
         contactEmail: selectedLead.contactEmail,
         contactName: selectedLead.contactName,
         phone: selectedLead.phone,
+        referralCode: selectedLead.referralCode || '',
         updatedAt: new Date().toISOString()
       })
       toast.success('Lead updated')
@@ -157,6 +160,17 @@ export function LeadsPage() {
       toast.success(`${agentName} agent started for lead`)
     } catch (error) {
       toast.error(`Failed to start ${agentName} agent`)
+    }
+  }
+
+  const handleVerifyLead = async (lead: any) => {
+    try {
+      await blink.db.leads.update(lead.id, { consentObtained: 1 })
+      toast.success(`${lead.companyName} verified for outreach`)
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      setSelectedLead((s: any) => s && s.id === lead.id ? { ...s, consentObtained: 1 } : s)
+    } catch {
+      toast.error('Failed to verify lead')
     }
   }
 
@@ -311,11 +325,18 @@ export function LeadsPage() {
                 >
                   <TableCell>
                     <div>
-                      <p className="font-medium text-slate-200 group-hover:text-teal-400 transition-colors">{lead.companyName}</p>
-                      <a 
-                        href={lead.website} 
-                        target="_blank" 
-                        rel="noreferrer" 
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-slate-200 group-hover:text-teal-400 transition-colors">{lead.companyName}</p>
+                        {lead.dataSource === 'ai_estimated' && (
+                          <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[10px] gap-1">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Unverified — AI-estimated
+                          </Badge>
+                        )}
+                      </div>
+                      <a
+                        href={lead.website}
+                        target="_blank"
+                        rel="noreferrer"
                         className="text-xs text-teal-500 hover:underline flex items-center gap-1 mt-0.5"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -348,19 +369,30 @@ export function LeadsPage() {
                   <TableCell>
                     {lead.consentObtained ? (
                       <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Obtained
+                        <CheckCircle2 className="w-3 h-3" /> Verified
                       </Badge>
                     ) : (
                       <Badge className="bg-slate-500/10 text-slate-500 border-slate-500/20 gap-1">
-                        <XCircle className="w-3 h-3" /> Pending
+                        <XCircle className="w-3 h-3" /> Unverified
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      {!lead.consentObtained && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-500 hover:text-emerald-400"
+                          title="Verify lead for autonomous outreach/invoicing"
+                          onClick={() => handleVerifyLead(lead)}
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-8 w-8 text-teal-500 hover:text-teal-400"
                         onClick={() => {
                           setSelectedLead(lead)
@@ -445,12 +477,23 @@ export function LeadsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-email">Email</Label>
-                <Input 
-                  id="edit-email" 
+                <Input
+                  id="edit-email"
                   className="bg-slate-950 border-slate-800"
                   value={selectedLead.contactEmail}
                   onChange={(e) => setSelectedLead({...selectedLead, contactEmail: e.target.value})}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-referral">Affiliate Referral Code (optional)</Label>
+                <Input
+                  id="edit-referral"
+                  placeholder="e.g. MARCUS20"
+                  className="bg-slate-950 border-slate-800"
+                  value={selectedLead.referralCode || ''}
+                  onChange={(e) => setSelectedLead({...selectedLead, referralCode: e.target.value})}
+                />
+                <p className="text-[10px] text-slate-500">Credits the affiliate's commission automatically when this lead's invoice is paid.</p>
               </div>
             </div>
           )}
@@ -484,6 +527,11 @@ export function LeadsPage() {
                   <p className="text-xs text-slate-300">Niche: <span className="text-slate-100 font-medium">{selectedLead.niche || 'Digital Agency'}</span></p>
                   <p className="text-xs text-slate-300 mt-1">Location: <span className="text-slate-100 font-medium">{selectedLead.location || 'Southern California'}</span></p>
                   <p className="text-xs text-slate-300 mt-1">Source: <span className="text-slate-100 font-medium">{selectedLead.source || 'Direct'}</span></p>
+                  {selectedLead.dataSource === 'ai_estimated' && (
+                    <div className="flex items-center gap-1.5 mt-2 text-amber-400 text-[11px]">
+                      <AlertTriangle className="w-3 h-3" /> AI-estimated — company details are not verified accurate
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Contact Info</p>
@@ -494,30 +542,45 @@ export function LeadsPage() {
               </div>
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-white italic">Autonomous Actions</p>
-                <Button 
-                  variant="outline" 
+                {!selectedLead.consentObtained && (
+                  <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                    <p className="text-xs text-amber-400 mb-2">Outreach and invoicing are blocked until this lead is verified.</p>
+                    <Button
+                      className="w-full justify-start gap-3 bg-emerald-600 hover:bg-emerald-500"
+                      onClick={() => handleVerifyLead(selectedLead)}
+                    >
+                      <ShieldCheck className="w-4 h-4" /> Verify Lead
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  variant="outline"
                   className="w-full justify-start gap-3 border-slate-800 text-slate-300 hover:bg-slate-800"
                   onClick={() => handleRunAgent('Scoring', selectedLead.id)}
                 >
                   <Target className="w-4 h-4 text-amber-400" /> Run Score Analysis
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full justify-start gap-3 border-slate-800 text-slate-300 hover:bg-slate-800"
                   onClick={() => handleRunAgent('Asset Generation', selectedLead.id)}
                 >
                   <Sparkles className="w-4 h-4 text-emerald-400" /> Generate Assets
                 </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start gap-3 border-slate-800 text-slate-300 hover:bg-slate-800"
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+                  disabled={!selectedLead.consentObtained}
+                  title={!selectedLead.consentObtained ? 'Verify this lead first' : undefined}
                   onClick={() => handleRunAgent('Outreach', selectedLead.id)}
                 >
                   <Send className="w-4 h-4 text-blue-400" /> Launch Outreach
                 </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start gap-3 border-slate-800 text-slate-300 hover:bg-slate-800"
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+                  disabled={!selectedLead.consentObtained}
+                  title={!selectedLead.consentObtained ? 'Verify this lead first' : undefined}
                   onClick={() => handleRunAgent('Invoicing', selectedLead.id)}
                 >
                   <Receipt className="w-4 h-4 text-purple-400" /> Send Growth Invoice

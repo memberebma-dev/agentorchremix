@@ -6,6 +6,7 @@ import analyticsApp from "./routes/analytics";
 import affiliatesApp from "./routes/affiliates";
 import remindersApp from "./routes/reminders";
 import emailWebhookApp from "./routes/emailWebhook";
+import previewApp from "./routes/preview";
 
 const app = new Hono<{ Bindings: Record<string, string> }>();
 app.use("*", cors());
@@ -23,6 +24,9 @@ app.all("/orchestrator", async (c) => {
 app.post("/smart-followup", async (c) => {
   const env = c.env as Record<string, string>;
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
+  const body = await c.req.json().catch(() => ({} as any));
+  const windowHours = Number(body?.windowHours) > 0 ? Number(body.windowHours) : 24;
+  const threshold = Number.isFinite(body?.threshold) ? Number(body.threshold) : 60;
 
   try {
     const sequences = await blink.db.outreachSequences.list({ where: { status: "sent" }, limit: 50 }) as any[];
@@ -31,12 +35,12 @@ app.post("/smart-followup", async (c) => {
     for (const seq of sequences) {
       if (seq.step >= 5) continue;
       const hoursAgo = (Date.now() - new Date(seq.lastSentAt || seq.createdAt).getTime()) / 3600000;
-      if (hoursAgo < 24) continue;
+      if (hoursAgo < windowHours) continue;
 
       const scores = await blink.db.leadScores.list({ where: { leadId: seq.leadId }, limit: 1 }) as any[];
       const score = scores[0]?.overallScore || 50;
 
-      if (score >= 60) {
+      if (score >= threshold) {
         const nextStep = seq.step + 1;
         await blink.db.outreachSequences.update(seq.id, { step: nextStep, lastSentAt: new Date().toISOString() });
         await blink.db.outreachAnalytics.create({
@@ -61,6 +65,7 @@ app.route("/analytics", analyticsApp);
 app.route("/affiliates", affiliatesApp);
 app.route("/reminders", remindersApp);
 app.route("/webhooks/email", emailWebhookApp);
+app.route("/preview", previewApp);
 
 import stripeApp from "./stripe";
 app.route("/stripe", stripeApp);

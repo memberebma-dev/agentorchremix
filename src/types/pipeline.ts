@@ -7,8 +7,16 @@ export interface Lead {
   contactName: string
   phone: string
   source: string
+  /** How this lead's contact data was sourced. 'ai_estimated' means an LLM guessed it and it is NOT verified accurate. */
+  dataSource?: 'google_maps' | 'ai_estimated' | 'manual'
+  /** Affiliate referral code this lead should be credited to on payment, if any. */
+  referralCode?: string
+  niche?: string
+  location?: string
+  leadScore?: number
   status: LeadStatus
-  consentObtained: boolean
+  /** 0/1. Whether a human has explicitly verified this lead for autonomous outreach/invoicing — never auto-set to true. */
+  consentObtained: number
   createdAt: string
   updatedAt: string
 }
@@ -20,9 +28,9 @@ export interface LeadScore {
   leadId: string
   conversionLikelihood: number
   potentialServicesValue: number
-  searchActivityScore: number
-  paidAdsActivity: number
   overallScore: number
+  /** JSON-stringified string[] of specific issues found for this lead (no website, low reviews, etc). */
+  issuesJson?: string
   createdAt: string
 }
 
@@ -92,4 +100,5 @@ export interface PipelineStats {
   responseRate: number
   conversionRate: number
   passiveRevenue: number
+  avgLeadScore: number
 }
