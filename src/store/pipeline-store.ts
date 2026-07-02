@@ -256,7 +256,7 @@ export function useStartAgent() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ agentName, leadId }: { agentName: string; leadId?: string }) => {
+    mutationFn: async ({ agentName, leadId, niche, location }: { agentName: string; leadId?: string; niche?: string; location?: string }) => {
       // 0. Clean up any stuck runs older than 2 minutes before starting
       try {
         const stuckRuns = await blink.db.agentRuns.list({ where: { status: 'running' } })
@@ -283,7 +283,7 @@ export function useStartAgent() {
       fetch(ORCHESTRATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: run.id, agentName, leadId }),
+        body: JSON.stringify({ runId: run.id, agentName, leadId, niche, location }),
       }).catch((err) => console.error('Orchestrator invoke error:', err))
       
       return run

@@ -1,28 +1,49 @@
-// SendGrid email utilities
+// Email utilities — SendGrid primary, Resend fallback
 
 export async function sendEmail(
-  sgKey: string,
+  env: Record<string, string>,
   to: string,
   subject: string,
   html: string
 ): Promise<boolean> {
-  if (!sgKey || !to) return false;
-  try {
-    const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${sgKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: to }] }],
-        from: { email: "pipeline@agentorch.io", name: "AgentOrch" },
-        subject,
-        content: [{ type: "text/html", value: html }],
-      }),
-    });
-    return res.status === 202;
-  } catch (e) {
-    console.error("SendGrid error:", e);
-    return false;
+  if (!to) return false;
+  const sgKey = env.SENDGRID_API_KEY || "";
+  const resendKey = env.RESEND_API_KEY || "";
+
+  if (sgKey) {
+    try {
+      const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${sgKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: to }] }],
+          from: { email: "pipeline@agentorch.io", name: "AgentOrch" },
+          subject,
+          content: [{ type: "text/html", value: html }],
+        }),
+      });
+      if (res.status === 202) return true;
+      console.error("SendGrid failed:", res.status, await res.text().catch(() => ""));
+    } catch (e) {
+      console.error("SendGrid error:", e);
+    }
   }
+
+  if (resendKey) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "AgentOrch <pipeline@agentorch.io>", to: [to], subject, html }),
+      });
+      if (res.ok) return true;
+      console.error("Resend failed:", res.status, await res.text().catch(() => ""));
+    } catch (e) {
+      console.error("Resend error:", e);
+    }
+  }
+
+  return false;
 }
 
 export function buildOutreachEmail(

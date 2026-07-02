@@ -5,6 +5,7 @@ import { runOrchestration } from "./routes/orchestrator";
 import analyticsApp from "./routes/analytics";
 import affiliatesApp from "./routes/affiliates";
 import remindersApp from "./routes/reminders";
+import emailWebhookApp from "./routes/emailWebhook";
 
 const app = new Hono<{ Bindings: Record<string, string> }>();
 app.use("*", cors());
@@ -59,6 +60,7 @@ app.post("/smart-followup", async (c) => {
 app.route("/analytics", analyticsApp);
 app.route("/affiliates", affiliatesApp);
 app.route("/reminders", remindersApp);
+app.route("/webhooks/email", emailWebhookApp);
 
 import stripeApp from "./stripe";
 app.route("/stripe", stripeApp);

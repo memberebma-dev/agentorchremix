@@ -20,6 +20,7 @@ import { Loader2, LogOut, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { BACKEND_URL } from '@/lib/api'
+import { PipelineConfig, loadPipelineConfig, savePipelineConfig } from '@/lib/pipelineConfig'
 
 type PipelineView =
   | 'dashboard'
@@ -290,35 +291,11 @@ function SettingsPage() {
   )
 }
 
-const PIPELINE_CONFIG_KEY = 'agentorch_pipeline_config'
-
-interface PipelineConfig {
-  leadScoreThreshold: number
-  growthPackagePrice: number
-  regionFocus: string
-  outreachResponseWindowHours: number
-}
-
-const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
-  leadScoreThreshold: 60,
-  growthPackagePrice: 4997,
-  regionFocus: 'Southern California',
-  outreachResponseWindowHours: 48,
-}
-
-function loadPipelineConfig(): PipelineConfig {
-  try {
-    const raw = localStorage.getItem(PIPELINE_CONFIG_KEY)
-    if (raw) return { ...DEFAULT_PIPELINE_CONFIG, ...JSON.parse(raw) }
-  } catch { /* fall through to defaults */ }
-  return DEFAULT_PIPELINE_CONFIG
-}
-
 function PipelineConfigCard() {
   const [config, setConfig] = useState<PipelineConfig>(loadPipelineConfig)
 
   const handleSave = () => {
-    localStorage.setItem(PIPELINE_CONFIG_KEY, JSON.stringify(config))
+    savePipelineConfig(config)
     toast.success('Configuration saved.')
   }
 

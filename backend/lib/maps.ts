@@ -1,5 +1,7 @@
 // Google Maps Places API — real lead discovery + web presence scoring
 
+import { generateAIContent } from "./ai";
+
 export interface PlaceResult {
   companyName: string;
   website: string;
@@ -66,33 +68,17 @@ export async function discoverLeadsFromMaps(
   }
 }
 
-/** Discover leads via OpenAI when Google Maps fails (billing not enabled, etc.) */
+/** Discover leads via the AI provider fallback chain when Google Maps fails (billing not enabled, etc.) */
 export async function discoverLeadsViaAI(
-  openaiKey: string,
+  env: Record<string, string>,
   niche: string,
   location: string,
   maxResults = 5
 ): Promise<PlaceResult[]> {
-  if (!openaiKey) return [];
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{
-          role: "user",
-          content: `Return a JSON array of exactly ${maxResults} real businesses in the "${niche}" industry located in "${location}". Each object must have: companyName, website (real URL or empty string), phone (real number or empty string), address (real street address in ${location}), rating (1-5 number), reviewCount (number). Return ONLY valid JSON, no markdown.`
-        }],
-        max_tokens: 1500,
-        temperature: 0.3,
-      }),
-    });
-    if (!res.ok) return [];
-    const json = (await res.json()) as any;
-    let text = json.choices?.[0]?.message?.content?.trim() || "[]";
+    const raw = await generateAIContent(env, `Return a JSON array of exactly ${maxResults} real businesses in the "${niche}" industry located in "${location}". Each object must have: companyName, website (real URL or empty string), phone (real number or empty string), address (real street address in ${location}), rating (1-5 number), reviewCount (number). Return ONLY valid JSON, no markdown.`);
     // Strip markdown fences if present
-    text = text.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const text = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
     const parsed = JSON.parse(text);
     if (!Array.isArray(parsed)) return [];
     return parsed.slice(0, maxResults).map((b: any, i: number) => ({

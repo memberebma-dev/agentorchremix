@@ -10,10 +10,9 @@ export async function runOrchestration(
   body: { runId: string; agentName: string; leadId?: string; niche?: string; location?: string }
 ) {
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
-  const openaiKey = env.OPENAI_API_KEY || "";
-  const sgKey = env.SENDGRID_API_KEY || "";
   const mapsKey = env.GOOGLE_MAPS_API_KEY || "";
   const stripeKey = env.STRIPE_SECRET_KEY || "";
+  const hasEmailProvider = !!(env.SENDGRID_API_KEY || env.RESEND_API_KEY);
   const { runId, agentName, leadId } = body;
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -31,8 +30,8 @@ export async function runOrchestration(
       let source = "Google Maps API";
       if (places.length === 0) {
         await updateRun("running", 20, `Maps unavailable. Falling back to AI discovery for "${niche}" in "${location}"...`);
-        places = await discoverLeadsViaAI(openaiKey, niche, location, 10);
-        source = "AI Discovery (OpenAI)";
+        places = await discoverLeadsViaAI(env, niche, location, 10);
+        source = "AI Discovery";
       }
       if (places.length === 0) { await updateRun("failed", 0, `Could not find leads for "${niche}" in "${location}". Try a broader niche or location.`); return; }
       await updateRun("running", 50, `Found ${places.length} businesses via ${source}. Scoring & deduplicating...`);
@@ -72,8 +71,8 @@ export async function runOrchestration(
         const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
         const lead = leads[0]; if (!lead) throw new Error("Lead not found");
         await updateRun("running", 40, `Generating AI audit for ${lead.companyName}...`);
-        await generateAssetsForLead(blink, openaiKey, lead);
-        await updateRun("success", 100, `AI assets generated for ${lead.companyName} via Groq.`);
+        await generateAssetsForLead(blink, env, lead);
+        await updateRun("success", 100, `AI assets generated for ${lead.companyName}.`);
         return;
       }
       // Batch mode: generate assets for every lead that doesn't have them yet
@@ -83,10 +82,10 @@ export async function runOrchestration(
       let done = 0;
       for (const lead of candidates) {
         await updateRun("running", 10 + Math.round((done / candidates.length) * 85), `Generating AI assets for ${lead.companyName} (${done + 1}/${candidates.length})...`);
-        await generateAssetsForLead(blink, openaiKey, lead);
+        await generateAssetsForLead(blink, env, lead);
         done++;
       }
-      await updateRun("success", 100, `Batch complete: AI assets generated for ${done} lead(s) via Groq.`);
+      await updateRun("success", 100, `Batch complete: AI assets generated for ${done} lead(s).`);
       return;
     }
 
@@ -96,7 +95,7 @@ export async function runOrchestration(
       const leads = await blink.db.leads.list({ where: { id: leadId }, limit: 1 }) as any[];
       const lead = leads[0]; if (!lead) throw new Error("Lead not found");
       await updateRun("running", 40, `Composing AI outreach for ${lead.companyName}...`);
-      const emailBody = await generateAIContent(openaiKey, `Write a 4-sentence cold outreach email for ${lead.companyName} (${lead.contactName || "decision maker"}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`);
+      const emailBody = await generateAIContent(env, `Write a 4-sentence cold outreach email for ${lead.companyName} (${lead.contactName || "decision maker"}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`);
       const seqId = crypto.randomUUID();
       const existingSeq = await blink.db.outreachSequences.list({ where: { leadId }, limit: 1 }) as any[];
       if (existingSeq.length === 0) {
@@ -104,14 +103,14 @@ export async function runOrchestration(
       } else {
         await blink.db.outreachSequences.update(existingSeq[0].id, { step: Math.min((existingSeq[0].step || 1) + 1, 5), lastSentAt: new Date().toISOString(), lastEmailBody: emailBody });
       }
-      await blink.db.outreachAnalytics.create({ id: crypto.randomUUID(), sequenceId: seqId, leadId, step: 1, eventType: "sent", metadata: JSON.stringify({ channel: "email", via: "sendgrid" }) });
+      await blink.db.outreachAnalytics.create({ id: crypto.randomUUID(), sequenceId: seqId, leadId, step: 1, eventType: "sent", metadata: JSON.stringify({ channel: "email" }) });
       let emailSent = false;
-      if (lead.contactEmail && sgKey) {
-        await updateRun("running", 75, `Sending via SendGrid to ${lead.contactEmail}...`);
-        emailSent = await sendEmail(sgKey, lead.contactEmail, `Preview site ready for ${lead.companyName}`, buildOutreachEmail(lead.contactName, lead.companyName, emailBody));
+      if (lead.contactEmail && hasEmailProvider) {
+        await updateRun("running", 75, `Sending outreach email to ${lead.contactEmail}...`);
+        emailSent = await sendEmail(env, lead.contactEmail, `Preview site ready for ${lead.companyName}`, buildOutreachEmail(lead.contactName, lead.companyName, emailBody));
       }
       await blink.db.leads.update(leadId, { status: "outreach_sent" });
-      await updateRun("success", 100, `Outreach sent for ${lead.companyName}. Email${emailSent ? " delivered via SendGrid" : lead.contactEmail ? " queued (no SendGrid key)" : " skipped (no email on file)"}.`);
+      await updateRun("success", 100, `Outreach sent for ${lead.companyName}. Email${emailSent ? " delivered" : lead.contactEmail ? " queued (no email provider key)" : " skipped (no email on file)"}.`);
       return;
     }
 
@@ -166,8 +165,8 @@ export async function runOrchestration(
       await blink.db.leads.update(leadId, { status: "proposal" });
 
       let emailSent = false;
-      if (lead.contactEmail && sgKey && invoice.hosted_invoice_url) {
-        emailSent = await sendEmail(sgKey, lead.contactEmail, `Invoice ready — Digital Agency Growth Package ($4,997)`,
+      if (lead.contactEmail && hasEmailProvider && invoice.hosted_invoice_url) {
+        emailSent = await sendEmail(env, lead.contactEmail, `Invoice ready — Digital Agency Growth Package ($4,997)`,
           `<div style="font-family:Arial,sans-serif;max-width:600px;color:#333;line-height:1.6">
             <p>Hi ${lead.contactName || "there"},</p>
             <p>Your <strong>Digital Agency Growth Package</strong> invoice for <strong>$4,997</strong> is ready.</p>
@@ -176,7 +175,7 @@ export async function runOrchestration(
             <p style="color:#888;font-size:12px">— AgentOrch<br/><a href="https://agentorch.io" style="color:#0D9488">agentorch.io</a></p>
           </div>`);
       }
-      await updateRun("success", 100, `Real Stripe invoice ${invoice.id} created for $4,997 (${lead.companyName}).${emailSent ? " Emailed via SendGrid." : lead.contactEmail ? " (No SendGrid key — email not sent, use hosted link.)" : " (No contact email on file.)"}`);
+      await updateRun("success", 100, `Real Stripe invoice ${invoice.id} created for $4,997 (${lead.companyName}).${emailSent ? " Emailed to customer." : lead.contactEmail ? " (No email provider key — email not sent, use hosted link.)" : " (No contact email on file.)"}`);
       return;
     }
 
@@ -192,7 +191,7 @@ export async function runOrchestration(
     if (agentName === "Full Pipeline" || agentName === "Coordinator") {
       const niche = body.niche || "commercial bridge lender";
       const location = body.location || "Southern California";
-      await runFullPipeline(blink, updateRun, openaiKey, sgKey, mapsKey, niche, location);
+      await runFullPipeline(blink, updateRun, env, mapsKey, niche, location);
       return;
     }
 
@@ -203,13 +202,13 @@ export async function runOrchestration(
   }
 }
 
-async function generateAssetsForLead(blink: any, openaiKey: string, lead: any) {
-  const audit = await generateAIContent(openaiKey, `Write a detailed SEO/AEO audit report for ${lead.companyName}. Website: ${lead.website || "none"}. Location: ${lead.location || "N/A"}. Include 5 critical issues and 3 quick wins. Under 400 words.`);
+async function generateAssetsForLead(blink: any, env: Record<string, string>, lead: any) {
+  const audit = await generateAIContent(env, `Write a detailed SEO/AEO audit report for ${lead.companyName}. Website: ${lead.website || "none"}. Location: ${lead.location || "N/A"}. Include 5 critical issues and 3 quick wins. Under 400 words.`);
   const existing = await blink.db.generatedAssets.list({ where: { leadId: lead.id, type: "audit_report" }, limit: 1 }) as any[];
   if (existing.length > 0) { await blink.db.generatedAssets.update(existing[0].id, { content: audit }); }
   else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "audit_report", hostedUrl: `https://agentorch.io/audit/${lead.id}`, content: audit }); }
 
-  const copy = await generateAIContent(openaiKey, `Write hero headline (10 words), subheadline (20 words), 3 service pillars, and CTA for ${lead.companyName} (${lead.niche || "local business"} in ${lead.location || "N/A"}). SEO-optimized.`);
+  const copy = await generateAIContent(env, `Write hero headline (10 words), subheadline (20 words), 3 service pillars, and CTA for ${lead.companyName} (${lead.niche || "local business"} in ${lead.location || "N/A"}). SEO-optimized.`);
   const existWeb = await blink.db.generatedAssets.list({ where: { leadId: lead.id, type: "custom_website" }, limit: 1 }) as any[];
   if (existWeb.length > 0) { await blink.db.generatedAssets.update(existWeb[0].id, { content: copy }); }
   else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `https://preview-${lead.id.slice(0, 8)}.agentorch.site`, content: copy }); }
@@ -217,7 +216,7 @@ async function generateAssetsForLead(blink: any, openaiKey: string, lead: any) {
   await blink.db.leads.update(lead.id, { status: "audited" });
 }
 
-async function runFullPipeline(blink: any, updateRun: Function, openaiKey: string, sgKey: string, mapsKey: string, niche: string, location: string) {
+async function runFullPipeline(blink: any, updateRun: Function, env: Record<string, string>, mapsKey: string, niche: string, location: string) {
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
   // Stage 1: Discovery (Maps → AI fallback)
   await updateRun("running", 8, `Stage 1: Searching "${niche}" in "${location}"...`);
@@ -225,8 +224,8 @@ async function runFullPipeline(blink: any, updateRun: Function, openaiKey: strin
   let source = "Google Maps API";
   if (places.length === 0) {
     await updateRun("running", 12, `Maps unavailable. Using AI discovery for "${niche}" in "${location}"...`);
-    places = await discoverLeadsViaAI(openaiKey, niche, location, 5);
-    source = "AI Discovery (OpenAI)";
+    places = await discoverLeadsViaAI(env, niche, location, 5);
+    source = "AI Discovery";
   }
   if (places.length === 0) { await updateRun("failed", 0, `No leads found for "${niche}" in "${location}". Try a broader query.`); return; }
   const newLeads: any[] = [];
@@ -246,12 +245,12 @@ async function runFullPipeline(blink: any, updateRun: Function, openaiKey: strin
     await blink.db.leadScores.create({ id: crypto.randomUUID(), leadId: lead.id, overallScore, conversionLikelihood, searchActivityScore, paidAdsActivity, potentialServicesValue: 4997 });
     await blink.db.leads.update(lead.id, { status: "scored", leadScore: overallScore });
   }
-  await updateRun("running", 42, "Stage 3: Generating AI audit reports via OpenAI...");
+  await updateRun("running", 42, "Stage 3: Generating AI audit reports...");
   // Stage 3: Assets
   for (const lead of newLeads) {
-    const audit = await generateAIContent(openaiKey, `Write a 3-sentence SEO audit for ${lead.companyName} (${niche} in ${lead.address || location}). ${!lead.website ? "No website detected." : "Website: " + lead.website}. Be specific and professional.`);
+    const audit = await generateAIContent(env, `Write a 3-sentence SEO audit for ${lead.companyName} (${niche} in ${lead.address || location}). ${!lead.website ? "No website detected." : "Website: " + lead.website}. Be specific and professional.`);
     await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "audit_report", hostedUrl: `https://agentorch.io/audit/${lead.id}`, content: audit });
-    const copy = await generateAIContent(openaiKey, `Write a 10-word hero headline for ${lead.companyName} (${niche} in ${lead.address || location}).`);
+    const copy = await generateAIContent(env, `Write a 10-word hero headline for ${lead.companyName} (${niche} in ${lead.address || location}).`);
     await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `https://preview-${lead.id.slice(0, 8)}.agentorch.site`, content: copy });
     await blink.db.leads.update(lead.id, { status: "audited" });
   }
