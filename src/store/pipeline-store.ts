@@ -34,9 +34,12 @@ export function useLeads() {
   return useQuery({
     queryKey: ['leads'],
     queryFn: async () => {
+      // Leads.tsx search filters this list client-side, so the cap needs to cover
+      // the whole pipeline, not just a recent page, or older leads silently become
+      // unsearchable. 500 is a stopgap — a real fix is server-side search/pagination.
       const leads = await blink.db.leads.list({
         orderBy: { createdAt: 'desc' },
-        limit: 100
+        limit: 500
       })
       return leads as Lead[]
     },

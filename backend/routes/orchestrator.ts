@@ -137,7 +137,10 @@ export async function runOrchestration(
         const replyEvents = await blink.db.outreachAnalytics.list({ where: { leadId: lead.id, eventType: "replied" }, limit: 1 }) as any[];
         const daysSince = (Date.now() - new Date(lead.updatedAt || lead.createdAt).getTime()) / 86400000;
         if (replyEvents.length > 0) { await blink.db.leads.update(lead.id, { status: "responded" }); promoted++; }
-        else if (score >= threshold && daysSince < 7) { await blink.db.leads.update(lead.id, { status: "qualified" }); promoted++; }
+        // No dead zone: any high-scorer still within the 14-day window qualifies,
+        // not just ones scored in the first 7 days. Only past 14 days with no
+        // reply and no qualifying score does a lead actually expire.
+        else if (score >= threshold && daysSince <= 14) { await blink.db.leads.update(lead.id, { status: "qualified" }); promoted++; }
         else if (daysSince > 14) { await blink.db.leads.update(lead.id, { status: "lost" }); expired++; }
       }
       const respondedLeads = await blink.db.leads.list({ where: { status: "responded" }, limit: 50 }) as any[];
