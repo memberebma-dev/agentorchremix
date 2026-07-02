@@ -147,6 +147,28 @@ stripeApp.post('/webhook', async (c) => {
           if (!result.success) console.error('Affiliate tracking failed:', result.error);
         }
       }
+    } else if (event.type === 'checkout.session.completed') {
+      // Records that a real Billing-page subscription purchase happened. Full
+      // per-tenant plan gating/dashboards is future work (not built yet) — this
+      // just makes the subscription visible/queryable instead of only existing in Stripe.
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.mode === 'subscription') {
+        const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
+        await blink.db.subscribers.create({
+          id: crypto.randomUUID(),
+          email: session.customer_details?.email || session.customer_email || '',
+          stripeCustomerId: String(session.customer || ''),
+          stripeSubscriptionId: String(session.subscription || ''),
+          status: 'active',
+        });
+      }
+    } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription;
+      const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
+      const matches = await blink.db.subscribers.list({ where: { stripeSubscriptionId: subscription.id }, limit: 1 }) as any[];
+      if (matches[0]) {
+        await blink.db.subscribers.update(matches[0].id, { status: event.type === 'customer.subscription.deleted' ? 'canceled' : subscription.status });
+      }
     } else if (event.type === 'invoice.voided' || event.type === 'invoice.marked_uncollectible') {
       const stripeInvoice = event.data.object as Stripe.Invoice;
       const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });

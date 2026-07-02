@@ -8,6 +8,7 @@ import { CheckIcon, Loader2 } from "lucide-react";
 import { toast } from 'sonner';
 import { useBlinkAuth } from '@blinkdotnew/react';
 import { BACKEND_URL } from '@/lib/api';
+import { useSubscribers } from '@/store/pipeline-store';
 
 interface Price {
   id: string;
@@ -26,6 +27,8 @@ interface Product {
 
 const BillingPage: React.FC = () => {
   const { user } = useBlinkAuth();
+  const { data: subscribers } = useSubscribers();
+  const activeSubscribers = subscribers?.filter(s => s.status === 'active') || [];
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,9 +155,15 @@ const BillingPage: React.FC = () => {
       <h1 className="text-5xl font-extrabold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-500">
         Flexible Plans for Every Agency
       </h1>
-      <p className="text-xl text-center text-gray-400 mb-12 max-w-3xl mx-auto">
+      <p className="text-xl text-center text-gray-400 mb-6 max-w-3xl mx-auto">
         Choose the perfect plan to scale your agent orchestration needs. Unlock advanced features and supercharge your agency's growth.
       </p>
+
+      {subscribers && subscribers.length > 0 && (
+        <p className="text-center text-sm text-teal-400 mb-6">
+          {activeSubscribers.length} active subscriber{activeSubscribers.length === 1 ? '' : 's'}
+        </p>
+      )}
 
       {products.length === 0 ? (
         <p className="text-center text-gray-500">No products configured in Stripe yet. Add products in your Stripe Dashboard to see plans here.</p>

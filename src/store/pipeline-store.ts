@@ -247,6 +247,20 @@ export function useAffiliates() {
   })
 }
 
+export function useSubscribers() {
+  return useQuery({
+    queryKey: ['subscribers'],
+    queryFn: async () => {
+      const subscribers = await blink.db.subscribers.list({
+        orderBy: { createdAt: 'desc' },
+        limit: 200,
+      })
+      return subscribers as any[]
+    },
+    staleTime: 30000,
+  })
+}
+
 export function useInvoiceReminders() {
   return useQuery({
     queryKey: ['invoiceReminders'],
