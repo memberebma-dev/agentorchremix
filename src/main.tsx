@@ -21,7 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BlinkProvider
       projectId={getProjectId()}
-      publishableKey={import.meta.env.VITE_BLINK_PUBLISHABLE_KEY || 'blnk_pk_7ClC0bGDrNQU__01R5zI6XD0wQ6ACKti'}
+      publishableKey={import.meta.env.VITE_BLINK_PUBLISHABLE_KEY || 'blnk_pk_is3Sy1vW0h-YmPhDwbG0N3x3LvqKdeVc'}
     >
       <BlinkAuthProvider>
         <QueryClientProvider client={queryClient}>
