@@ -20,7 +20,7 @@ import { Loader2, LogOut, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { BACKEND_URL } from '@/lib/api'
-import { PipelineConfig, loadPipelineConfig, savePipelineConfig } from '@/lib/pipelineConfig'
+import { PipelineConfig, loadPipelineConfig, savePipelineConfig, SUGGESTED_NICHES } from '@/lib/pipelineConfig'
 
 type PipelineView =
   | 'dashboard'
@@ -320,6 +320,27 @@ function PipelineConfigCard() {
             type="number"
             value={config.growthPackagePrice}
             onChange={(e) => setConfig(c => ({ ...c, growthPackagePrice: Number(e.target.value) }))}
+            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-400 mb-2 block">
+            Target Niche
+            <span className="text-slate-600 font-normal ml-1">(what Lead Discovery searches for — change this to stop rediscovering the same businesses)</span>
+          </label>
+          <select
+            value={SUGGESTED_NICHES.includes(config.niche) ? config.niche : ''}
+            onChange={(e) => { if (e.target.value) setConfig(c => ({ ...c, niche: e.target.value })) }}
+            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm mb-2"
+          >
+            <option value="" disabled>Pick a suggested niche...</option>
+            {SUGGESTED_NICHES.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <input
+            type="text"
+            value={config.niche}
+            onChange={(e) => setConfig(c => ({ ...c, niche: e.target.value }))}
+            placeholder="Or type any custom niche, e.g. Wedding Photographers"
             className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
           />
         </div>
