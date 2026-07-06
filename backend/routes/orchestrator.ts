@@ -13,7 +13,7 @@ export async function runOrchestration(
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   const mapsKey = env.GOOGLE_MAPS_API_KEY || "";
   const stripeKey = env.STRIPE_SECRET_KEY || "";
-  const hasEmailProvider = !!(env.SENDGRID_API_KEY || env.RESEND_API_KEY);
+  const hasEmailProvider = !!env.SENDGRID_API_KEY;
   const { runId, agentName, leadId } = body;
   const growthPackagePrice = Number(body.amount) > 0 ? Number(body.amount) : 4997;
   const leadScoreThreshold = Number.isFinite(body.threshold) ? Number(body.threshold) : 60;

@@ -10,9 +10,7 @@ interface AIProvider {
 
 function getProviders(env: Record<string, string>): AIProvider[] {
   return [
-    { name: "Groq", key: env.GROQ_API_KEY || "", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" },
-    { name: "OpenAI", key: env.OPENAI_API_KEY || "", url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
-    { name: "OpenRouter", key: env.OPENROUTER_API_KEY || "", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.3-70b-instruct" },
+    { name: "Groq", key: env.OPENAI_API_KEY || "", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" },
   ].filter((p) => p.key);
 }
 
