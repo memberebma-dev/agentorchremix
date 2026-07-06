@@ -7,7 +7,7 @@ const remindersApp = new Hono<{ Bindings: Record<string, string> }>();
 remindersApp.post("/run", async (c) => {
   const env = c.env as Record<string, string>;
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
-  const hasEmailProvider = !!(env.SENDGRID_API_KEY || env.RESEND_API_KEY);
+  const hasEmailProvider = !!env.SENDGRID_API_KEY;
 
   try {
     const openInvoices = await blink.db.invoices.list({ where: { status: "open" } }) as any[];

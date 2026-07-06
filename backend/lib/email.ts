@@ -8,7 +8,7 @@ export async function sendEmail(
 ): Promise<boolean> {
   if (!to) return false;
   const sgKey = env.SENDGRID_API_KEY || "";
-  const resendKey = env.RESEND_API_KEY || "";
+  const resendKey = "";
 
   if (sgKey) {
     try {
