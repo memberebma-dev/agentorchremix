@@ -42,7 +42,7 @@ app.post("/smart-followup", async (c) => {
   const windowHours = Number(body?.windowHours) > 0 ? Number(body.windowHours) : 24;
   const threshold = Number.isFinite(body?.threshold) ? Number(body.threshold) : 60;
 
-  const hasEmailProvider = !!env.SENDGRID_API_KEY;
+  const hasEmailProvider = !!(env.SENDGRID_API_KEY || env.RESEND_API_KEY);
 
   try {
     const sequences = await blink.db.outreachSequences.list({ where: { status: "sent" }, limit: 50 }) as any[];
