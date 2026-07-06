@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { createClient } from "@blinkdotnew/sdk";
-import { generateAIContent } from "../lib/ai";
+import { generateAIContent, generateStructuredContent } from "../lib/ai";
 import { sendEmail, buildOutreachEmail } from "../lib/email";
 import { discoverLeadsFromMaps, discoverLeadsViaAI, scoreLeadFromPresence } from "../lib/maps";
 import { findOrCreateCustomer, createAndFinalizeInvoice } from "../lib/stripeInvoice";
@@ -276,17 +276,73 @@ async function runOutreachForLead(blink: any, env: Record<string, string>, lead:
 }
 
 async function generateAssetsForLead(blink: any, env: Record<string, string>, lead: any) {
-  const audit = await generateAIContent(env, `Write a detailed SEO/AEO audit report for ${lead.companyName}. Website: ${lead.website || "none"}. Location: ${lead.location || "N/A"}. Include 5 critical issues and 3 quick wins. Under 400 words.`);
+  const audit = JSON.stringify(await buildAuditReportData(env, lead));
   const existing = await blink.db.generatedAssets.list({ where: { leadId: lead.id, type: "audit_report" }, limit: 1 }) as any[];
   if (existing.length > 0) { await blink.db.generatedAssets.update(existing[0].id, { content: audit }); }
   else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "audit_report", hostedUrl: `${BACKEND_URL}/preview/audit/${lead.id}`, content: audit }); }
 
-  const copy = await generateAIContent(env, `Write hero headline (10 words), subheadline (20 words), 3 service pillars, and CTA for ${lead.companyName} (${lead.niche || "local business"} in ${lead.location || "N/A"}). SEO-optimized.`);
+  const site = JSON.stringify(await buildWebsitePreviewData(env, lead));
   const existWeb = await blink.db.generatedAssets.list({ where: { leadId: lead.id, type: "custom_website" }, limit: 1 }) as any[];
-  if (existWeb.length > 0) { await blink.db.generatedAssets.update(existWeb[0].id, { content: copy }); }
-  else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: copy }); }
+  if (existWeb.length > 0) { await blink.db.generatedAssets.update(existWeb[0].id, { content: site }); }
+  else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: site }); }
 
   await blink.db.leads.update(lead.id, { status: "audited" });
+}
+
+interface AuditReportData {
+  headline: string;
+  overallImpression: string;
+  criticalIssues: string[];
+  quickWins: string[];
+  closingPitch: string;
+}
+
+interface WebsitePreviewData {
+  heroHeadline: string;
+  heroSubheadline: string;
+  pillars: { title: string; description: string }[];
+  cta: string;
+}
+
+async function buildAuditReportData(env: Record<string, string>, lead: any): Promise<AuditReportData> {
+  const prompt = `You are a senior digital marketing consultant writing a compelling, specific SEO/AEO audit for ${lead.companyName}, a ${lead.niche || "local"} business in ${lead.location || "N/A"}. Their website: ${lead.website || "no website found"}.
+Return JSON matching exactly this schema:
+{
+  "headline": "a punchy 8-12 word headline naming the biggest opportunity",
+  "overallImpression": "2-3 sentences summarizing their current online presence, specific and non-generic",
+  "criticalIssues": ["5 specific, punchy issue statements — each naming a concrete, believable problem (e.g. missing schema markup, slow mobile load, no Google Business reviews strategy, weak local keyword targeting, thin service pages) — not vague filler"],
+  "quickWins": ["3 specific, concrete quick wins they could see results from within 30 days"],
+  "closingPitch": "2 sentences making a confident, non-pushy case for booking a strategy call"
+}`;
+  const data = await generateStructuredContent<AuditReportData>(env, prompt);
+  if (data && Array.isArray(data.criticalIssues) && Array.isArray(data.quickWins)) return data;
+  // Fallback keeps the page non-empty even if every AI provider is down/unparseable.
+  return {
+    headline: `Growth Opportunities for ${lead.companyName}`,
+    overallImpression: "A full audit is pending — check back shortly, or contact us to accelerate this report.",
+    criticalIssues: [],
+    quickWins: [],
+    closingPitch: "Book a free strategy call to see the full breakdown.",
+  };
+}
+
+async function buildWebsitePreviewData(env: Record<string, string>, lead: any): Promise<WebsitePreviewData> {
+  const prompt = `You are an elite copywriter building a high-converting landing page preview for ${lead.companyName}, a ${lead.niche || "local"} business in ${lead.location || "N/A"}. This preview is used as a sales asset to win them as a client — it must look and read like a real, polished, professional website, not generic filler.
+Return JSON matching exactly this schema:
+{
+  "heroHeadline": "a punchy, specific 6-10 word hero headline (not generic — reference their actual niche/location)",
+  "heroSubheadline": "a compelling 15-25 word subheadline that builds credibility and urgency",
+  "pillars": [{"title": "3-4 word title", "description": "one specific, benefit-driven sentence"} — exactly 3 of these, each a distinct service/value pillar relevant to their niche],
+  "cta": "a punchy 2-5 word call to action button label"
+}`;
+  const data = await generateStructuredContent<WebsitePreviewData>(env, prompt);
+  if (data && Array.isArray(data.pillars) && data.pillars.length > 0) return data;
+  return {
+    heroHeadline: `${lead.companyName} — Built to Grow`,
+    heroSubheadline: "A modern, high-converting web presence tailored to your business.",
+    pillars: [],
+    cta: "Get Started",
+  };
 }
 
 async function runFullPipeline(blink: any, updateRun: Function, env: Record<string, string>, mapsKey: string, niche: string, location: string, growthPackagePrice: number, hasEmailProvider: boolean) {
@@ -319,13 +375,15 @@ async function runFullPipeline(blink: any, updateRun: Function, env: Record<stri
     await blink.db.leadScores.create({ id: crypto.randomUUID(), leadId: lead.id, overallScore, conversionLikelihood, issuesJson: JSON.stringify(issues), potentialServicesValue: growthPackagePrice });
     await blink.db.leads.update(lead.id, { status: "scored", leadScore: overallScore });
   }
-  await updateRun("running", 42, "Stage 3: Generating AI audit reports...");
-  // Stage 3: Assets
+  await updateRun("running", 42, "Stage 3: Generating AI audit reports & website previews...");
+  // Stage 3: Assets — same structured generators as the standalone Asset
+  // Generation agent, so Full Pipeline output looks identical (real, sellable
+  // pages, not a bare paragraph of text).
   for (const lead of newLeads) {
-    const audit = await generateAIContent(env, `Write a 3-sentence SEO audit for ${lead.companyName} (${niche} in ${lead.address || location}). ${!lead.website ? "No website detected." : "Website: " + lead.website}. Be specific and professional.`);
+    const audit = JSON.stringify(await buildAuditReportData(env, { ...lead, location: lead.address || location, niche }));
     await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "audit_report", hostedUrl: `${BACKEND_URL}/preview/audit/${lead.id}`, content: audit });
-    const copy = await generateAIContent(env, `Write a 10-word hero headline for ${lead.companyName} (${niche} in ${lead.address || location}).`);
-    await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: copy });
+    const site = JSON.stringify(await buildWebsitePreviewData(env, { ...lead, location: lead.address || location, niche }));
+    await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: site });
     await blink.db.leads.update(lead.id, { status: "audited" });
   }
   await updateRun("running", 68, "Stage 4: Creating outreach sequences (consented leads only)...");

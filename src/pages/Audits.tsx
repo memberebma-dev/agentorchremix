@@ -12,6 +12,23 @@ import { Search, FileText, Sparkles, Loader2, ExternalLink, AlertTriangle } from
 import { toast } from 'sonner'
 import { getAssetPreviewUrl } from '@/lib/api'
 
+interface AuditReportData {
+  headline: string
+  overallImpression: string
+  criticalIssues: string[]
+  quickWins: string[]
+  closingPitch: string
+}
+
+function parseAuditData(content?: string): AuditReportData | null {
+  if (!content) return null
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed && Array.isArray(parsed.criticalIssues) && Array.isArray(parsed.quickWins)) return parsed
+  } catch { /* legacy plain-text asset */ }
+  return null
+}
+
 export function AuditsPage() {
   const { data: leads, isLoading, isError, error } = useLeads()
   const { data: assets } = useAssets()
@@ -48,6 +65,7 @@ export function AuditsPage() {
 
   const selectedLead = leads?.find(l => l.id === selectedLeadId)
   const selectedAudit = selectedLeadId ? getAudit(selectedLeadId) : undefined
+  const selectedAuditData = parseAuditData(selectedAudit?.content)
 
   return (
     <div className="space-y-6">
@@ -161,10 +179,35 @@ export function AuditsPage() {
                   <p className="text-sm font-semibold text-slate-300">{new Date(selectedAudit.generatedAt).toLocaleString()}</p>
                 </div>
               </div>
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">AI-Generated Audit (Groq Llama 3.3-70b)</p>
-                <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{selectedAudit.content}</p>
-              </div>
+              {selectedAuditData ? (
+                <>
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{selectedAuditData.headline}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed">{selectedAuditData.overallImpression}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                    <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2">Critical Issues</p>
+                    <ul className="space-y-1.5">
+                      {selectedAuditData.criticalIssues.map((issue, i) => (
+                        <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-red-400">•</span>{issue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                    <p className="text-[10px] font-bold text-teal-400 uppercase tracking-widest mb-2">Quick Wins</p>
+                    <ul className="space-y-1.5">
+                      {selectedAuditData.quickWins.map((win, i) => (
+                        <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-teal-400">✓</span>{win}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">AI-Generated Audit</p>
+                  <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{selectedAudit.content}</p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>

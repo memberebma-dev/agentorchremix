@@ -32,6 +32,11 @@ import { toast } from 'sonner'
 import { useUrlLive } from '@/hooks/use-url-live'
 import { getAssetPreviewUrl } from '@/lib/api'
 
+function formatAssetContent(content?: string): string {
+  if (!content) return 'System generated AI asset'
+  try { return JSON.stringify(JSON.parse(content), null, 2) } catch { return content }
+}
+
 function HostedStatusBadge({ url }: { url?: string }) {
   const { data: isLive, isLoading } = useUrlLive(url)
   if (!url) return <Badge className="bg-slate-500/10 text-slate-500 border-slate-500/20">No URL</Badge>
@@ -200,7 +205,7 @@ export function AssetsPage() {
                 </div>
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Internal Metadata</p>
-                  <p className="text-xs text-slate-400 font-mono">{selectedAsset.content || 'System generated AI asset'}</p>
+                  <pre className="text-xs text-slate-400 font-mono whitespace-pre-wrap">{formatAssetContent(selectedAsset.content)}</pre>
                 </div>
               </div>
             </div>
