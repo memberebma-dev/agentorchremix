@@ -29,25 +29,26 @@ export async function runOrchestration(
       const niche = body.niche || "commercial bridge lender";
       const location = body.location || "Southern California";
       await updateRun("running", 10, `Searching for "${niche}" in "${location}"...`);
-      let places = await discoverLeadsFromMaps(mapsKey, niche, location, 10);
+      const excludeNames = await fetchExistingCompanyNames(blink);
+      let { places, diagnostic } = await discoverLeadsFromMaps(mapsKey, niche, location, 10, excludeNames);
       let source = "Google Maps API";
       if (places.length === 0) {
-        await updateRun("running", 20, `Maps unavailable. Falling back to AI discovery for "${niche}" in "${location}"...`);
-        places = await discoverLeadsViaAI(env, niche, location, 10);
+        await updateRun("running", 20, `${diagnostic} Falling back to AI discovery for "${niche}" in "${location}"...`);
+        const aiResult = await discoverLeadsViaAI(env, niche, location, 10, excludeNames);
+        places = aiResult.places;
+        diagnostic = aiResult.diagnostic;
         source = "AI Discovery";
       }
-      if (places.length === 0) { await updateRun("failed", 0, `Could not find leads for "${niche}" in "${location}". Try a broader niche or location.`); return; }
-      await updateRun("running", 50, `Found ${places.length} businesses via ${source}. Scoring & deduplicating...`);
-      let created = 0, skipped = 0;
+      if (places.length === 0) { await updateRun("failed", 0, diagnostic || `Could not find leads for "${niche}" in "${location}". Try a broader niche or location.`); return; }
+      await updateRun("running", 50, `Found ${places.length} new businesses via ${source}. Scoring...`);
+      let created = 0;
       for (const place of places) {
-        const existing = await blink.db.leads.list({ where: { companyName: place.companyName }, limit: 1 }) as any[];
-        if (existing.length > 0) { skipped++; continue; }
         const { overallScore } = scoreLeadFromPresence(place);
         const dataSource = source === "Google Maps API" ? "google_maps" : "ai_estimated";
         await blink.db.leads.create({ id: crypto.randomUUID(), companyName: place.companyName, website: place.website || "", phone: place.phone || "", contactEmail: "", contactName: "", source, dataSource, niche, location: place.address || location, status: "new", leadScore: overallScore, consentObtained: 0 });
         created++;
       }
-      await updateRun("success", 100, `${source}: ${created} new leads added, ${skipped} duplicates skipped. Query: "${niche}" in "${location}".`);
+      await updateRun("success", 100, `${source}: ${created} new lead(s) added. Query: "${niche}" in "${location}".`);
       return;
     }
 
@@ -240,6 +241,12 @@ async function invoiceLead(blink: any, env: Record<string, string>, stripe: Stri
   return { ok: true, message: `Real Stripe invoice ${invoice.id} created for $${formattedPrice} (${lead.companyName}).${emailSent ? " Emailed to customer." : lead.contactEmail ? " (No email provider key — email not sent, use hosted link.)" : " (No contact email on file.)"}` };
 }
 
+/** Company names already in the pipeline, lowercased, so discovery can skip them up front instead of fetching-then-discarding. */
+async function fetchExistingCompanyNames(blink: any): Promise<Set<string>> {
+  const leads = await blink.db.leads.list({ limit: 1000 }) as any[];
+  return new Set(leads.map((l: any) => (l.companyName || "").trim().toLowerCase()).filter(Boolean));
+}
+
 async function scoreLead(blink: any, lead: any, growthPackagePrice: number) {
   const { overallScore, conversionLikelihood, issues } = scoreLeadFromPresence({ website: lead.website, phone: lead.phone });
   const issuesJson = JSON.stringify(issues);
@@ -383,25 +390,25 @@ async function runFullPipeline(blink: any, updateRun: Function, env: Record<stri
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
   // Stage 1: Discovery (Maps → AI fallback)
   await updateRun("running", 8, `Stage 1: Searching "${niche}" in "${location}"...`);
-  let places = await discoverLeadsFromMaps(mapsKey, niche, location, 5);
+  const excludeNames = await fetchExistingCompanyNames(blink);
+  let { places, diagnostic } = await discoverLeadsFromMaps(mapsKey, niche, location, 5, excludeNames);
   let source = "Google Maps API";
   if (places.length === 0) {
-    await updateRun("running", 12, `Maps unavailable. Using AI discovery for "${niche}" in "${location}"...`);
-    places = await discoverLeadsViaAI(env, niche, location, 5);
+    await updateRun("running", 12, `${diagnostic} Using AI discovery for "${niche}" in "${location}"...`);
+    const aiResult = await discoverLeadsViaAI(env, niche, location, 5, excludeNames);
+    places = aiResult.places;
+    diagnostic = aiResult.diagnostic;
     source = "AI Discovery";
   }
-  if (places.length === 0) { await updateRun("failed", 0, `No leads found for "${niche}" in "${location}". Try a broader query.`); return; }
+  if (places.length === 0) { await updateRun("failed", 0, diagnostic || `No leads found for "${niche}" in "${location}". Try a broader query.`); return; }
   const newLeads: any[] = [];
   for (const place of places) {
-    const existing = await blink.db.leads.list({ where: { companyName: place.companyName }, limit: 1 }) as any[];
-    if (existing.length > 0) continue;
     const { overallScore } = scoreLeadFromPresence(place);
     const id = crypto.randomUUID();
     const dataSource = source === "Google Maps API" ? "google_maps" : "ai_estimated";
     await blink.db.leads.create({ id, companyName: place.companyName, website: place.website || "", phone: place.phone || "", contactEmail: "", contactName: "", source, dataSource, niche, location: place.address || location, status: "new", leadScore: overallScore, consentObtained: 0 });
     newLeads.push({ ...place, id, leadScore: overallScore });
   }
-  if (newLeads.length === 0) { await updateRun("success", 100, `All ${places.length} businesses already in pipeline. No new leads.`); return; }
   await updateRun("running", 22, `Discovered ${newLeads.length} new leads. Scoring...`);
   // Stage 2: Scoring
   for (const lead of newLeads) {
