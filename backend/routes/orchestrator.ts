@@ -276,12 +276,17 @@ async function runOutreachForLead(blink: any, env: Record<string, string>, lead:
 }
 
 async function generateAssetsForLead(blink: any, env: Record<string, string>, lead: any) {
-  const audit = JSON.stringify(await buildAuditReportData(env, lead));
+  const scores = await blink.db.leadScores.list({ where: { leadId: lead.id }, limit: 1 }) as any[];
+  const score = scores[0];
+  let realIssues: string[] = [];
+  try { realIssues = score?.issuesJson ? JSON.parse(score.issuesJson) : []; } catch { /* ignore malformed */ }
+
+  const audit = JSON.stringify(await buildAuditReportData(env, lead, score?.overallScore, realIssues));
   const existing = await blink.db.generatedAssets.list({ where: { leadId: lead.id, type: "audit_report" }, limit: 1 }) as any[];
   if (existing.length > 0) { await blink.db.generatedAssets.update(existing[0].id, { content: audit }); }
   else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "audit_report", hostedUrl: `${BACKEND_URL}/preview/audit/${lead.id}`, content: audit }); }
 
-  const site = JSON.stringify(await buildWebsitePreviewData(env, lead));
+  const site = JSON.stringify(await buildWebsitePreviewData(env, lead, realIssues));
   const existWeb = await blink.db.generatedAssets.list({ where: { leadId: lead.id, type: "custom_website" }, limit: 1 }) as any[];
   if (existWeb.length > 0) { await blink.db.generatedAssets.update(existWeb[0].id, { content: site }); }
   else { await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: site }); }
@@ -289,57 +294,86 @@ async function generateAssetsForLead(blink: any, env: Record<string, string>, le
   await blink.db.leads.update(lead.id, { status: "audited" });
 }
 
+interface AuditFinding {
+  title: string;
+  severity: "critical" | "high" | "medium";
+  description: string;
+  fix: string;
+  impact: string;
+}
+
 interface AuditReportData {
-  headline: string;
-  overallImpression: string;
-  criticalIssues: string[];
+  executiveSummary: string;
+  findings: AuditFinding[];
   quickWins: string[];
-  closingPitch: string;
+  projectedImpact: string;
+  nextSteps: string;
 }
 
 interface WebsitePreviewData {
   heroHeadline: string;
   heroSubheadline: string;
+  trustBadges: string[];
   pillars: { title: string; description: string }[];
   cta: string;
 }
 
-async function buildAuditReportData(env: Record<string, string>, lead: any): Promise<AuditReportData> {
-  const prompt = `You are a senior digital marketing consultant writing a compelling, specific SEO/AEO audit for ${lead.companyName}, a ${lead.niche || "local"} business in ${lead.location || "N/A"}. Their website: ${lead.website || "no website found"}.
+const CONSULTANT_SYSTEM_PROMPT = "You are a senior partner at a boutique digital growth agency that charges $4,997+ for growth packages. You write like someone who has personally audited thousands of local businesses — confident, specific, numbers-driven, zero fluff, zero generic marketing-speak. Every claim should sound like it came from actually looking at real data, never like a template with the business name swapped in. You never fabricate specific facts you weren't given (exact traffic numbers, named competitors, etc.) — instead you reason confidently from the real signals provided and industry-standard local-SEO economics.";
+
+async function buildAuditReportData(env: Record<string, string>, lead: any, overallScore: number | undefined, realIssues: string[]): Promise<AuditReportData> {
+  const groundingFacts = [
+    `Lead score: ${overallScore ?? "unscored"}/100 (higher = more digital-presence gaps = more opportunity for us)`,
+    lead.website ? `Website on file: ${lead.website}` : "No website found in Google Business listing — this alone is a critical, provable gap.",
+    realIssues.length ? `Real, verified presence gaps already detected: ${realIssues.join("; ")}` : "No specific gaps pre-detected — reason from typical issues for this niche.",
+  ].join("\n");
+
+  const prompt = `Write a high-ticket SEO/AEO growth audit for ${lead.companyName}, a ${lead.niche || "local"} business in ${lead.location || "N/A"}.
+
+REAL DATA TO GROUND THIS IN (do not contradict these, build the narrative around them):
+${groundingFacts}
+
 Return JSON matching exactly this schema:
 {
-  "headline": "a punchy 8-12 word headline naming the biggest opportunity",
-  "overallImpression": "2-3 sentences summarizing their current online presence, specific and non-generic",
-  "criticalIssues": ["5 specific, punchy issue statements — each naming a concrete, believable problem (e.g. missing schema markup, slow mobile load, no Google Business reviews strategy, weak local keyword targeting, thin service pages) — not vague filler"],
-  "quickWins": ["3 specific, concrete quick wins they could see results from within 30 days"],
-  "closingPitch": "2 sentences making a confident, non-pushy case for booking a strategy call"
+  "executiveSummary": "3-4 sentences, confident consultant voice, referencing the real data above specifically — this is the opening of a report someone is about to be asked to pay $4,997 for, make it sound like it",
+  "findings": [
+    {"title": "specific finding name (e.g. 'No Local Schema Markup on Service Pages')", "severity": "critical|high|medium", "description": "1-2 sentences on what's wrong and why it matters for THIS niche/location", "fix": "1-2 sentences, concrete and specific recommended fix", "impact": "one sentence quantifying the business cost/opportunity in plain terms — e.g. leads lost per month, ranking positions, revenue range — framed as a realistic estimate, not a guarantee"}
+    — exactly 5 of these, ordered most severe first, at least 2 must be "critical"
+  ],
+  "quickWins": ["3 specific, concrete actions with a believable 30-day timeline"],
+  "projectedImpact": "2-3 sentences giving a realistic dollar-range estimate of what fixing these gaps is worth annually for a business like this, framed as an estimate based on industry conversion benchmarks — not a guarantee",
+  "nextSteps": "2 sentences, confident and consultative, making the case for booking a strategy call — no hard pressure, assumes the reader is already convinced by the data above"
 }`;
-  const data = await generateStructuredContent<AuditReportData>(env, prompt);
-  if (data && Array.isArray(data.criticalIssues) && Array.isArray(data.quickWins)) return data;
+  const data = await generateStructuredContent<AuditReportData>(env, prompt, 1400, CONSULTANT_SYSTEM_PROMPT);
+  if (data && Array.isArray(data.findings) && data.findings.length > 0) return data;
   // Fallback keeps the page non-empty even if every AI provider is down/unparseable.
   return {
-    headline: `Growth Opportunities for ${lead.companyName}`,
-    overallImpression: "A full audit is pending — check back shortly, or contact us to accelerate this report.",
-    criticalIssues: [],
+    executiveSummary: `A full audit for ${lead.companyName} is being finalized — check back shortly, or contact us to accelerate this report.`,
+    findings: [],
     quickWins: [],
-    closingPitch: "Book a free strategy call to see the full breakdown.",
+    projectedImpact: "Full financial impact analysis pending.",
+    nextSteps: "Book a free strategy call to see the full breakdown.",
   };
 }
 
-async function buildWebsitePreviewData(env: Record<string, string>, lead: any): Promise<WebsitePreviewData> {
-  const prompt = `You are an elite copywriter building a high-converting landing page preview for ${lead.companyName}, a ${lead.niche || "local"} business in ${lead.location || "N/A"}. This preview is used as a sales asset to win them as a client — it must look and read like a real, polished, professional website, not generic filler.
+async function buildWebsitePreviewData(env: Record<string, string>, lead: any, realIssues: string[]): Promise<WebsitePreviewData> {
+  const context = realIssues.length ? `Known real gaps in their current presence: ${realIssues.join("; ")}.` : "";
+  const prompt = `Write the copy for a high-converting landing page preview for ${lead.companyName}, a ${lead.niche || "local"} business in ${lead.location || "N/A"}. ${context}
+This preview is a sales asset used to win them as a client — it must read like a real, polished, professional website written by someone who understands their specific industry and locale, not generic template filler that could apply to any business.
+
 Return JSON matching exactly this schema:
 {
-  "heroHeadline": "a punchy, specific 6-10 word hero headline (not generic — reference their actual niche/location)",
-  "heroSubheadline": "a compelling 15-25 word subheadline that builds credibility and urgency",
-  "pillars": [{"title": "3-4 word title", "description": "one specific, benefit-driven sentence"} — exactly 3 of these, each a distinct service/value pillar relevant to their niche],
-  "cta": "a punchy 2-5 word call to action button label"
+  "heroHeadline": "a punchy, specific 6-10 word hero headline referencing their actual niche/location — should sound like a real ad, not a placeholder",
+  "heroSubheadline": "a compelling 15-25 word subheadline that builds credibility and urgency, specific to this niche's buying behavior",
+  "trustBadges": ["3 short (2-4 word) trust/credibility badges relevant to this niche, e.g. 'Licensed & Insured', 'Same-Day Response', '5-Star Rated' — pick ones that make sense for THIS business type"],
+  "pillars": [{"title": "3-4 word title", "description": "one specific, benefit-driven sentence"} — exactly 3, each a distinct, niche-relevant service/value pillar],
+  "cta": "a punchy 2-5 word call to action button label appropriate for this niche's buying behavior (e.g. urgent services get 'Call Now', consultative services get 'Book a Free Consult')"
 }`;
-  const data = await generateStructuredContent<WebsitePreviewData>(env, prompt);
+  const data = await generateStructuredContent<WebsitePreviewData>(env, prompt, 1000, CONSULTANT_SYSTEM_PROMPT);
   if (data && Array.isArray(data.pillars) && data.pillars.length > 0) return data;
   return {
     heroHeadline: `${lead.companyName} — Built to Grow`,
     heroSubheadline: "A modern, high-converting web presence tailored to your business.",
+    trustBadges: [],
     pillars: [],
     cta: "Get Started",
   };
@@ -374,15 +408,18 @@ async function runFullPipeline(blink: any, updateRun: Function, env: Record<stri
     const { overallScore, conversionLikelihood, issues } = scoreLeadFromPresence(lead);
     await blink.db.leadScores.create({ id: crypto.randomUUID(), leadId: lead.id, overallScore, conversionLikelihood, issuesJson: JSON.stringify(issues), potentialServicesValue: growthPackagePrice });
     await blink.db.leads.update(lead.id, { status: "scored", leadScore: overallScore });
+    lead.overallScore = overallScore;
+    lead.realIssues = issues;
   }
   await updateRun("running", 42, "Stage 3: Generating AI audit reports & website previews...");
   // Stage 3: Assets — same structured generators as the standalone Asset
   // Generation agent, so Full Pipeline output looks identical (real, sellable
   // pages, not a bare paragraph of text).
   for (const lead of newLeads) {
-    const audit = JSON.stringify(await buildAuditReportData(env, { ...lead, location: lead.address || location, niche }));
+    const leadCtx = { ...lead, location: lead.address || location, niche };
+    const audit = JSON.stringify(await buildAuditReportData(env, leadCtx, lead.overallScore, lead.realIssues || []));
     await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "audit_report", hostedUrl: `${BACKEND_URL}/preview/audit/${lead.id}`, content: audit });
-    const site = JSON.stringify(await buildWebsitePreviewData(env, { ...lead, location: lead.address || location, niche }));
+    const site = JSON.stringify(await buildWebsitePreviewData(env, leadCtx, lead.realIssues || []));
     await blink.db.generatedAssets.create({ id: crypto.randomUUID(), leadId: lead.id, type: "custom_website", hostedUrl: `${BACKEND_URL}/preview/site/${lead.id}`, content: site });
     await blink.db.leads.update(lead.id, { status: "audited" });
   }

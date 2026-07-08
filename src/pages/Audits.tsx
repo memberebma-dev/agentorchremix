@@ -12,21 +12,35 @@ import { Search, FileText, Sparkles, Loader2, ExternalLink, AlertTriangle } from
 import { toast } from 'sonner'
 import { getAssetPreviewUrl } from '@/lib/api'
 
+interface AuditFinding {
+  title: string
+  severity: 'critical' | 'high' | 'medium'
+  description: string
+  fix: string
+  impact: string
+}
+
 interface AuditReportData {
-  headline: string
-  overallImpression: string
-  criticalIssues: string[]
+  executiveSummary: string
+  findings: AuditFinding[]
   quickWins: string[]
-  closingPitch: string
+  projectedImpact: string
+  nextSteps: string
 }
 
 function parseAuditData(content?: string): AuditReportData | null {
   if (!content) return null
   try {
     const parsed = JSON.parse(content)
-    if (parsed && Array.isArray(parsed.criticalIssues) && Array.isArray(parsed.quickWins)) return parsed
+    if (parsed && Array.isArray(parsed.findings)) return parsed
   } catch { /* legacy plain-text asset */ }
   return null
+}
+
+const SEVERITY_STYLE: Record<string, string> = {
+  critical: 'bg-red-500/10 text-red-400 border-red-500/20',
+  high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  medium: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
 }
 
 export function AuditsPage() {
@@ -182,16 +196,22 @@ export function AuditsPage() {
               {selectedAuditData ? (
                 <>
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{selectedAuditData.headline}</p>
-                    <p className="text-sm text-slate-300 leading-relaxed">{selectedAuditData.overallImpression}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Executive Summary</p>
+                    <p className="text-sm text-slate-300 leading-relaxed">{selectedAuditData.executiveSummary}</p>
                   </div>
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-                    <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2">Critical Issues</p>
-                    <ul className="space-y-1.5">
-                      {selectedAuditData.criticalIssues.map((issue, i) => (
-                        <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-red-400">•</span>{issue}</li>
-                      ))}
-                    </ul>
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Findings</p>
+                    {selectedAuditData.findings.map((f, i) => (
+                      <div key={i} className="pt-3 border-t border-slate-800 first:border-t-0 first:pt-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge className={`text-[10px] px-2 py-0 border ${SEVERITY_STYLE[f.severity] || SEVERITY_STYLE.medium}`}>{f.severity}</Badge>
+                          <p className="text-sm font-semibold text-slate-200">{f.title}</p>
+                        </div>
+                        <p className="text-xs text-slate-400 mb-1">{f.description}</p>
+                        <p className="text-xs text-slate-300"><span className="text-slate-500 font-semibold">Fix: </span>{f.fix}</p>
+                        <p className="text-xs text-teal-400"><span className="text-slate-500 font-semibold">Impact: </span>{f.impact}</p>
+                      </div>
+                    ))}
                   </div>
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                     <p className="text-[10px] font-bold text-teal-400 uppercase tracking-widest mb-2">Quick Wins</p>
@@ -200,6 +220,10 @@ export function AuditsPage() {
                         <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-teal-400">✓</span>{win}</li>
                       ))}
                     </ul>
+                  </div>
+                  <div className="p-4 rounded-xl bg-teal-500/5 border border-teal-500/20">
+                    <p className="text-[10px] font-bold text-teal-500 uppercase tracking-widest mb-2">Projected Financial Impact</p>
+                    <p className="text-sm text-slate-300">{selectedAuditData.projectedImpact}</p>
                   </div>
                 </>
               ) : (

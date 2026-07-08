@@ -29,61 +29,96 @@ ${bodyHtml}
 </html>`;
 }
 
+interface AuditFinding {
+  title: string;
+  severity: "critical" | "high" | "medium";
+  description: string;
+  fix: string;
+  impact: string;
+}
+
 interface AuditReportData {
-  headline: string;
-  overallImpression: string;
-  criticalIssues: string[];
+  executiveSummary: string;
+  findings: AuditFinding[];
   quickWins: string[];
-  closingPitch: string;
+  projectedImpact: string;
+  nextSteps: string;
 }
 
 function isAuditData(v: any): v is AuditReportData {
-  return v && typeof v === "object" && Array.isArray(v.criticalIssues) && Array.isArray(v.quickWins);
+  return v && typeof v === "object" && Array.isArray(v.findings);
 }
 
+const SEVERITY_LABEL: Record<string, string> = { critical: "Critical", high: "High Priority", medium: "Medium" };
+
 function renderAuditReport(companyName: string, data: AuditReportData): string {
-  const issuesHtml = data.criticalIssues.length
-    ? data.criticalIssues.map((issue) => `<li class="issue"><span class="issue-icon">!</span><span>${escapeHtml(issue)}</span></li>`).join("")
-    : `<li class="issue muted">Full issue breakdown pending — check back shortly.</li>`;
+  const findingsHtml = data.findings.length
+    ? data.findings.map((f) => `
+      <div class="finding">
+        <div class="finding-head">
+          <span class="sev sev-${escapeHtml(f.severity)}">${escapeHtml(SEVERITY_LABEL[f.severity] || f.severity)}</span>
+          <h3>${escapeHtml(f.title)}</h3>
+        </div>
+        <p class="finding-desc">${escapeHtml(f.description)}</p>
+        <div class="finding-row"><span class="finding-label">Recommended fix</span><p>${escapeHtml(f.fix)}</p></div>
+        <div class="finding-row impact-row"><span class="finding-label">Est. impact</span><p>${escapeHtml(f.impact)}</p></div>
+      </div>`).join("")
+    : `<p class="muted">Full findings pending — check back shortly.</p>`;
   const winsHtml = data.quickWins.length
     ? data.quickWins.map((win) => `<li class="win"><span class="win-icon">✓</span><span>${escapeHtml(win)}</span></li>`).join("")
     : `<li class="win muted">Quick-win recommendations pending.</li>`;
 
   return wrapPage(
-    `SEO Audit — ${companyName}`,
+    `Growth Audit — ${companyName}`,
     `<div class="wrap">
-      <div class="eyebrow">SEO &amp; AEO Audit Report</div>
-      <h1>${escapeHtml(data.headline)}</h1>
-      <p class="company">Prepared for <strong>${escapeHtml(companyName)}</strong></p>
+      <div class="eyebrow">SEO &amp; AEO Growth Audit</div>
+      <h1>Prepared for ${escapeHtml(companyName)}</h1>
       <div class="card">
-        <h2>Current Standing</h2>
-        <p>${escapeHtml(data.overallImpression)}</p>
+        <h2>Executive Summary</h2>
+        <p>${escapeHtml(data.executiveSummary)}</p>
       </div>
       <div class="card">
-        <h2>Critical Issues Found</h2>
-        <ul class="list">${issuesHtml}</ul>
+        <h2>Findings</h2>
+        ${findingsHtml}
       </div>
       <div class="card">
         <h2>Quick Wins (30 days)</h2>
         <ul class="list">${winsHtml}</ul>
       </div>
+      <div class="card impact-card">
+        <h2>Projected Financial Impact</h2>
+        <p>${escapeHtml(data.projectedImpact)}</p>
+      </div>
       <div class="closing">
-        <p>${escapeHtml(data.closingPitch)}</p>
+        <p>${escapeHtml(data.nextSteps)}</p>
         <div class="cta-banner">Reply to the email that sent you this report to get started.</div>
       </div>
     </div>`,
     `
-    .wrap { max-width: 760px; margin: 0 auto; padding: 56px 24px 24px; }
+    .wrap { max-width: 780px; margin: 0 auto; padding: 56px 24px 24px; }
     .eyebrow { color: #0D9488; font-weight: 700; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 10px; }
-    h1 { font-size: 32px; line-height: 1.25; margin: 0 0 8px; color: #0f172a; }
-    .company { color: #64748b; margin: 0 0 32px; font-size: 14px; }
+    h1 { font-size: 30px; line-height: 1.25; margin: 0 0 32px; color: #0f172a; }
     .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px 28px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
-    .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: #334155; margin: 0 0 14px; }
+    .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: #334155; margin: 0 0 16px; }
+    .card p { margin: 0; }
+    .finding { padding: 18px 0; border-top: 1px solid #f1f5f9; }
+    .finding:first-child { border-top: none; padding-top: 0; }
+    .finding-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .finding-head h3 { margin: 0; font-size: 16px; color: #0f172a; }
+    .sev { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 999px; flex-shrink: 0; }
+    .sev-critical { background: #fef2f2; color: #dc2626; }
+    .sev-high { background: #fff7ed; color: #ea580c; }
+    .sev-medium { background: #f0f9ff; color: #0369a1; }
+    .finding-desc { color: #475569; font-size: 14px; margin: 0 0 10px; }
+    .finding-row { display: flex; gap: 8px; font-size: 13px; margin-top: 4px; }
+    .finding-row p { color: #334155; }
+    .finding-label { flex-shrink: 0; font-weight: 700; color: #94a3b8; width: 110px; }
+    .impact-row p { color: #0D9488; font-weight: 600; }
     .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-    .issue, .win { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; }
-    .issue-icon, .win-icon { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
-    .issue-icon { background: #fef2f2; color: #dc2626; }
-    .win-icon { background: #f0fdfa; color: #0D9488; }
+    .win { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; }
+    .win-icon { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: #f0fdfa; color: #0D9488; }
+    .impact-card { background: #f0fdfa; border-color: #99f6e4; }
+    .impact-card p { color: #0f172a; font-size: 15px; }
     .muted { color: #94a3b8; font-style: italic; }
     .closing { text-align: center; padding: 32px 0 8px; }
     .closing p { font-size: 16px; color: #334155; max-width: 560px; margin: 0 auto 20px; }
@@ -95,6 +130,7 @@ function renderAuditReport(companyName: string, data: AuditReportData): string {
 interface WebsitePreviewData {
   heroHeadline: string;
   heroSubheadline: string;
+  trustBadges: string[];
   pillars: { title: string; description: string }[];
   cta: string;
 }
@@ -104,6 +140,9 @@ function isWebsiteData(v: any): v is WebsitePreviewData {
 }
 
 function renderWebsitePreview(companyName: string, data: WebsitePreviewData, phone?: string): string {
+  const badgesHtml = (data.trustBadges || []).length
+    ? data.trustBadges.map((b) => `<span class="trust-badge">${escapeHtml(b)}</span>`).join("")
+    : "";
   const pillarsHtml = data.pillars.length
     ? data.pillars.map((p) => `<div class="pillar"><h3>${escapeHtml(p.title)}</h3><p>${escapeHtml(p.description)}</p></div>`).join("")
     : `<div class="pillar muted"><p>Service details coming soon.</p></div>`;
@@ -119,6 +158,7 @@ function renderWebsitePreview(companyName: string, data: WebsitePreviewData, pho
         <h1>${escapeHtml(data.heroHeadline)}</h1>
         <p>${escapeHtml(data.heroSubheadline)}</p>
         ${ctaTag}
+        ${badgesHtml ? `<div class="trust-row">${badgesHtml}</div>` : ""}
       </div>
     </div>
     <div class="pillars">${pillarsHtml}</div>
@@ -130,6 +170,8 @@ function renderWebsitePreview(companyName: string, data: WebsitePreviewData, pho
     .hero h1 { font-size: 38px; line-height: 1.2; margin: 0 0 16px; }
     .hero p { font-size: 17px; color: rgba(255,255,255,0.85); max-width: 480px; margin: 0 auto 32px; }
     .cta, a.cta { display: inline-block; background: #fff; color: #0D9488; font-weight: 700; padding: 14px 36px; border-radius: 999px; font-size: 15px; text-decoration: none; }
+    .trust-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 28px; }
+    .trust-badge { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); border: 1px solid rgba(255,255,255,0.3); padding: 6px 14px; border-radius: 999px; }
     .pillars { max-width: 900px; margin: -36px auto 0; padding: 0 24px 48px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; position: relative; }
     .pillar { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px; box-shadow: 0 8px 24px rgba(15,23,42,0.06); }
     .pillar h3 { margin: 0 0 8px; font-size: 16px; color: #0f172a; }
