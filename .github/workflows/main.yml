@@ -1,4 +1,4 @@
-name: Basic Health Check
+
 
 on:
   push:
