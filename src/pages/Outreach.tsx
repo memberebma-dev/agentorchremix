@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Eye,
   Loader2,
-  ListChecks
+  ListChecks,
+  Trash2
 } from 'lucide-react'
 import { useState } from 'react'
 import { 
@@ -42,6 +43,22 @@ export function OutreachPage() {
   const [selectedSequence, setSelectedSequence] = useState<any>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isMarkingReplied, setIsMarkingReplied] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const handleDelete = async (id: string, companyName: string) => {
+    if (!confirm(`Permanently delete this outreach sequence for ${companyName}? This cannot be undone.`)) return
+    setDeletingId(id)
+    try {
+      await blink.db.outreachSequences.delete(id)
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      if (selectedSequence?.id === id) setIsDetailOpen(false)
+      toast.success('Sequence deleted')
+    } catch {
+      toast.error('Failed to delete sequence')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const isOutreachRunning = agentRuns?.some(run => run.agentName === 'Outreach' && run.status === 'running')
   const isQualifyingRunning = agentRuns?.some(run => run.agentName === 'Qualifying' && run.status === 'running')
@@ -209,14 +226,24 @@ export function OutreachPage() {
                     {seq.lastSentAt ? new Date(seq.lastSentAt).toLocaleString() : 'Never'}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost" size="sm"
-                      className="h-8 gap-1.5 text-slate-400 hover:text-white"
-                      onClick={(e) => { e.stopPropagation(); setSelectedSequence(seq); setIsDetailOpen(true) }}
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      View <ChevronRight className="w-3.5 h-3.5" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost" size="sm"
+                        className="h-8 gap-1.5 text-slate-400 hover:text-white"
+                        onClick={(e) => { e.stopPropagation(); setSelectedSequence(seq); setIsDetailOpen(true) }}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        View <ChevronRight className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(seq.id, getLeadName(seq.leadId)) }}
+                        disabled={deletingId === seq.id}
+                        title="Delete this sequence"
+                      >
+                        {deletingId === seq.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -274,6 +301,16 @@ export function OutreachPage() {
           )}
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setIsDetailOpen(false)}>Close</Button>
+            {selectedSequence && (
+              <Button
+                variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+                onClick={() => handleDelete(selectedSequence.id, getLeadName(selectedSequence.leadId))}
+                disabled={deletingId === selectedSequence.id}
+              >
+                {deletingId === selectedSequence.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete
+              </Button>
+            )}
             {selectedSequence?.status !== 'replied' && selectedSequence?.status !== 'dead' && (
               <Button
                 className="bg-emerald-600 hover:bg-emerald-500 gap-2"

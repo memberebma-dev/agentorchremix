@@ -9,18 +9,19 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Sparkles, 
-  FileText, 
-  Globe, 
-  ExternalLink, 
+import {
+  Sparkles,
+  FileText,
+  Globe,
+  ExternalLink,
   RefreshCw,
   Eye,
   Layout,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react'
 import { useState } from 'react'
-import { 
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -31,6 +32,8 @@ import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 import { toast } from 'sonner'
 import { useUrlLive } from '@/hooks/use-url-live'
 import { getAssetPreviewUrl } from '@/lib/api'
+import { blink } from '@/lib/blink'
+import { useQueryClient } from '@tanstack/react-query'
 
 function formatAssetContent(content?: string): string {
   if (!content) return 'System generated AI asset'
@@ -51,10 +54,27 @@ export function AssetsPage() {
   const { data: assets, isLoading, isError, error } = useAssets()
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
+  const queryClient = useQueryClient()
   const [selectedAsset, setSelectedAsset] = useState<any>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const isGenerating = agentRuns?.some(run => run.agentName === 'Asset Generation' && run.status === 'running')
+
+  const handleDelete = async (id: string, companyName: string) => {
+    if (!confirm(`Permanently delete this asset for ${companyName}? This cannot be undone.`)) return
+    setDeletingId(id)
+    try {
+      await blink.db.generatedAssets.delete(id)
+      queryClient.invalidateQueries({ queryKey: ['generatedAssets'] })
+      if (selectedAsset?.id === id) setIsDetailOpen(false)
+      toast.success('Asset deleted')
+    } catch {
+      toast.error('Failed to delete asset')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const handleBatchGenerate = async () => {
     try {
@@ -169,6 +189,14 @@ export function AssetsPage() {
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
                       </Button>
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400"
+                        onClick={() => handleDelete(asset.id, getLeadName(asset.leadId))}
+                        disabled={deletingId === asset.id}
+                        title="Delete this asset"
+                      >
+                        {deletingId === asset.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -213,9 +241,19 @@ export function AssetsPage() {
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setIsDetailOpen(false)}>Close</Button>
             {selectedAsset && (
-              <Button className="bg-teal-600 hover:bg-teal-500" asChild>
-                <a href={getAssetPreviewUrl(selectedAsset)} target="_blank" rel="noreferrer">Open Preview Site</a>
-              </Button>
+              <>
+                <Button
+                  variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+                  onClick={() => handleDelete(selectedAsset.id, getLeadName(selectedAsset.leadId))}
+                  disabled={deletingId === selectedAsset.id}
+                >
+                  {deletingId === selectedAsset.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  Delete
+                </Button>
+                <Button className="bg-teal-600 hover:bg-teal-500" asChild>
+                  <a href={getAssetPreviewUrl(selectedAsset)} target="_blank" rel="noreferrer">Open Preview Site</a>
+                </Button>
+              </>
             )}
           </DialogFooter>
         </DialogContent>

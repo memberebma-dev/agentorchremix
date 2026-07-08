@@ -8,7 +8,7 @@ import {
   TableRow 
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, DollarSign, Target, ChevronRight, Loader2, Sparkles } from 'lucide-react'
+import { TrendingUp, DollarSign, Target, ChevronRight, Loader2, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import {
   Dialog,
@@ -20,17 +20,36 @@ import {
 import { Button } from '@/components/ui/button'
 import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 import { toast } from 'sonner'
+import { blink } from '@/lib/blink'
+import { useQueryClient } from '@tanstack/react-query'
 
 export function ScoresPage() {
   const { data: leads } = useLeads()
   const { data: scores, isLoading } = useScores()
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
+  const queryClient = useQueryClient()
   const [selectedLead, setSelectedLead] = useState<any>(null)
   const [selectedScore, setSelectedScore] = useState<any>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const isScoringRunning = agentRuns?.some(run => run.agentName === 'Scoring' && run.status === 'running')
+
+  const handleDelete = async (id: string, companyName: string) => {
+    if (!confirm(`Permanently delete the score record for ${companyName}? This cannot be undone.`)) return
+    setDeletingId(id)
+    try {
+      await blink.db.leadScores.delete(id)
+      queryClient.invalidateQueries({ queryKey: ['leadScores'] })
+      if (selectedScore?.id === id) setIsDetailOpen(false)
+      toast.success('Score deleted')
+    } catch {
+      toast.error('Failed to delete score')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const handleBatchScore = async () => {
     try {
@@ -111,16 +130,17 @@ export function ScoresPage() {
               <TableHead className="text-slate-400">Overall Score</TableHead>
               <TableHead className="text-slate-400">Services Value</TableHead>
               <TableHead className="text-slate-400">Conversion Likelihood</TableHead>
+              <TableHead className="text-slate-400 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-12 text-slate-500">Calculating scores...</TableCell>
+                <TableCell colSpan={5} className="text-center py-12 text-slate-500">Calculating scores...</TableCell>
               </TableRow>
             ) : scores?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-12 text-slate-500">No scored leads yet.</TableCell>
+                <TableCell colSpan={5} className="text-center py-12 text-slate-500">No scored leads yet.</TableCell>
               </TableRow>
             ) : (
               scores?.map((score) => {
@@ -158,6 +178,16 @@ export function ScoresPage() {
                       <Badge variant="outline" className={`${getScoreColor(score.conversionLikelihood)} border-current bg-current/5`}>
                         {score.conversionLikelihood}% Likely
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400"
+                        onClick={() => handleDelete(score.id, lead?.companyName || 'this lead')}
+                        disabled={deletingId === score.id}
+                        title="Delete this score"
+                      >
+                        {deletingId === score.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 )
@@ -204,6 +234,16 @@ export function ScoresPage() {
           )}
           <DialogFooter>
             <Button className="bg-slate-800 hover:bg-slate-700" onClick={() => setIsDetailOpen(false)}>Close</Button>
+            {selectedScore && (
+              <Button
+                variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+                onClick={() => handleDelete(selectedScore.id, selectedLead?.companyName || 'this lead')}
+                disabled={deletingId === selectedScore.id}
+              >
+                {deletingId === selectedScore.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
