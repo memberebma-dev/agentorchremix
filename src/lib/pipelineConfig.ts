@@ -38,6 +38,47 @@ export const SUGGESTED_NICHES = [
   'Moving Companies',
 ]
 
+export const REGION_OPTIONS = [
+  'Southern California',
+  'Northern California',
+  'Alaska',
+  'Arizona',
+  'Colorado',
+  'Connecticut',
+  'Delaware',
+  'Florida',
+  'Georgia',
+  'Hawaii',
+  'Idaho',
+  'Indiana',
+  'Kansas',
+  'Kentucky',
+  'Louisiana',
+  'Maine',
+  'Massachusetts',
+  'Mississippi',
+  'Montana',
+  'Nevada',
+  'New Hampshire',
+  'New York',
+  'North Dakota',
+  'Ohio',
+  'Oregon',
+  'Pennsylvania',
+  'Puerto Rico',
+  'Rhode Island',
+  'South Dakota',
+  'Tennessee',
+  'Texas',
+  'US Virgin Islands',
+  'Utah',
+  'Vermont',
+  'Virginia',
+  'Washington',
+  'West Virginia',
+  'Wyoming',
+]
+
 export function loadPipelineConfig(): PipelineConfig {
   try {
     const raw = localStorage.getItem(PIPELINE_CONFIG_KEY)

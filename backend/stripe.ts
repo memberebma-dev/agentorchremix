@@ -9,6 +9,24 @@ const stripeApp = new Hono<{ Bindings: Record<string, string> }>();
 const getStripe = (env: Record<string, string>) =>
   new Stripe(env.STRIPE_SECRET_KEY);
 
+// Dedicated status check — separate from /products-with-prices, which depends
+// on the account actually having Products configured AND the key having
+// Products-read scope. balance.retrieve() only needs basic read access, which
+// every valid secret/restricted key has, so this distinguishes "key missing"
+// from "key set but invalid/insufficient permissions" from "genuinely connected."
+stripeApp.get('/status', async (c) => {
+  const env = c.env as Record<string, string>;
+  const configured = !!env.STRIPE_SECRET_KEY;
+  if (!configured) return c.json({ configured: false, verified: false, error: 'STRIPE_SECRET_KEY is not set on the backend.' });
+  try {
+    const stripe = getStripe(env);
+    const balance = await stripe.balance.retrieve();
+    return c.json({ configured: true, verified: true, livemode: balance.livemode });
+  } catch (error: any) {
+    return c.json({ configured: true, verified: false, error: error.message });
+  }
+});
+
 stripeApp.get('/products-with-prices', async (c) => {
   try {
     const stripe = getStripe(c.env as Record<string, string>);

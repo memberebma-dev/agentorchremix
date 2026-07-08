@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
-import { CheckIcon, Loader2 } from "lucide-react";
+import { CheckIcon, Loader2, DollarSign, Users, Receipt } from "lucide-react";
 import { toast } from 'sonner';
 import { useBlinkAuth } from '@blinkdotnew/react';
 import { BACKEND_URL } from '@/lib/api';
-import { useSubscribers } from '@/store/pipeline-store';
+import { useSubscribers, usePipelineStats, useInvoices } from '@/store/pipeline-store';
 
 interface Price {
   id: string;
@@ -29,6 +29,9 @@ const BillingPage: React.FC = () => {
   const { user } = useBlinkAuth();
   const { data: subscribers } = useSubscribers();
   const activeSubscribers = subscribers?.filter(s => s.status === 'active') || [];
+  const { data: stats } = usePipelineStats();
+  const { data: invoices } = useInvoices();
+  const recentPaidInvoices = (invoices || []).filter(i => i.status === 'paid').slice(0, 5);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,30 +145,82 @@ const BillingPage: React.FC = () => {
     setResultUrl(null);
   };
 
-  if (loading) return (
-    <div className="flex justify-center items-center h-64">
-      <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
-      <p className="ml-3 text-lg text-gray-400">Loading pricing plans...</p>
-    </div>
-  );
-  if (error) return <div className="text-center py-10 text-red-500 text-lg">Error: {error}</div>;
-
   return (
     <div className="container mx-auto px-4 py-12 bg-gray-950 text-white min-h-screen">
       <h1 className="text-5xl font-extrabold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-500">
-        Flexible Plans for Every Agency
+        Billing &amp; Revenue
       </h1>
-      <p className="text-xl text-center text-gray-400 mb-6 max-w-3xl mx-auto">
-        Choose the perfect plan to scale your agent orchestration needs. Unlock advanced features and supercharge your agency's growth.
+      <p className="text-xl text-center text-gray-400 mb-10 max-w-3xl mx-auto">
+        Real revenue, subscribers, and plans — backed by Stripe.
       </p>
 
-      {subscribers && subscribers.length > 0 && (
-        <p className="text-center text-sm text-teal-400 mb-6">
-          {activeSubscribers.length} active subscriber{activeSubscribers.length === 1 ? '' : 's'}
-        </p>
+      {/* Revenue Overview — always visible regardless of whether Stripe Products are configured */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12 max-w-4xl mx-auto">
+        <div className="p-6 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Revenue</p>
+            <p className="text-2xl font-bold text-white mt-1">${(stats?.passiveRevenue || 0).toLocaleString()}</p>
+          </div>
+          <div className="p-3 rounded-full bg-emerald-500/10 text-emerald-500"><DollarSign className="w-5 h-5" /></div>
+        </div>
+        <div className="p-6 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active Subscribers</p>
+            <p className="text-2xl font-bold text-white mt-1">{activeSubscribers.length}</p>
+          </div>
+          <div className="p-3 rounded-full bg-blue-500/10 text-blue-500"><Users className="w-5 h-5" /></div>
+        </div>
+        <div className="p-6 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Paid Invoices</p>
+            <p className="text-2xl font-bold text-white mt-1">{(invoices || []).filter(i => i.status === 'paid').length}</p>
+          </div>
+          <div className="p-3 rounded-full bg-purple-500/10 text-purple-500"><Receipt className="w-5 h-5" /></div>
+        </div>
+      </div>
+
+      {recentPaidInvoices.length > 0 && (
+        <div className="max-w-4xl mx-auto mb-12">
+          <h2 className="text-lg font-semibold text-white mb-3">Recent Paid Invoices</h2>
+          <div className="rounded-xl border border-gray-700 bg-gray-800 overflow-hidden divide-y divide-gray-700">
+            {recentPaidInvoices.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between px-5 py-3">
+                <span className="text-sm text-gray-300 font-mono truncate">{inv.stripeInvoiceId || inv.id}</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-400">{new Date(inv.createdAt).toLocaleDateString()}</span>
+                  <span className="text-sm font-semibold text-emerald-400">${Number(inv.amount).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
-      {products.length === 0 ? (
+      {activeSubscribers.length > 0 && (
+        <div className="max-w-4xl mx-auto mb-12">
+          <h2 className="text-lg font-semibold text-white mb-3">Active Subscribers</h2>
+          <div className="rounded-xl border border-gray-700 bg-gray-800 overflow-hidden divide-y divide-gray-700">
+            {activeSubscribers.map(s => (
+              <div key={s.id} className="flex items-center justify-between px-5 py-3">
+                <span className="text-sm text-gray-300">{s.email || 'Unknown'}</span>
+                <span className="text-xs text-gray-500 font-mono">{s.stripeSubscriptionId}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <h2 className="text-3xl font-bold text-center mb-2">Plans</h2>
+      <p className="text-gray-500 text-center mb-8">Choose the perfect plan to scale your agent orchestration needs.</p>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-32">
+          <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
+          <p className="ml-3 text-lg text-gray-400">Loading pricing plans...</p>
+        </div>
+      ) : error ? (
+        <p className="text-center text-red-400 text-sm max-w-xl mx-auto">Couldn't load pricing plans from Stripe: {error}. Custom invoicing below still works independently.</p>
+      ) : products.length === 0 ? (
         <p className="text-center text-gray-500">No products configured in Stripe yet. Add products in your Stripe Dashboard to see plans here.</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">

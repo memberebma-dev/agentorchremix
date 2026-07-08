@@ -20,7 +20,8 @@ import { Loader2, LogOut, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { BACKEND_URL } from '@/lib/api'
-import { PipelineConfig, loadPipelineConfig, savePipelineConfig, SUGGESTED_NICHES } from '@/lib/pipelineConfig'
+import { PipelineConfig, loadPipelineConfig, savePipelineConfig, SUGGESTED_NICHES, REGION_OPTIONS } from '@/lib/pipelineConfig'
+import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 
 type PipelineView =
   | 'dashboard'
@@ -143,14 +144,25 @@ function App() {
 function SettingsPage() {
   const { user } = useBlinkAuth()
   const [stripeStatus, setStripeStatus] = useState<'checking' | 'connected' | 'not_connected'>('checking')
+  const [stripeError, setStripeError] = useState<string | null>(null)
+  const startAgent = useStartAgent()
+  const { data: agentRuns } = useAgentRuns()
 
   const checkStripeStatus = async () => {
     setStripeStatus('checking')
+    setStripeError(null)
     try {
-      const res = await fetch(`${BACKEND_URL}/stripe/products-with-prices`)
-      setStripeStatus(res.ok ? 'connected' : 'not_connected')
-    } catch {
+      const res = await fetch(`${BACKEND_URL}/stripe/status`)
+      const data = await res.json()
+      if (data.verified) {
+        setStripeStatus('connected')
+      } else {
+        setStripeStatus('not_connected')
+        setStripeError(data.error || 'Unknown error')
+      }
+    } catch (err: any) {
       setStripeStatus('not_connected')
+      setStripeError(`Could not reach backend: ${err.message}`)
     }
   }
 
@@ -216,8 +228,11 @@ function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-                <p className="text-sm font-semibold text-red-400">Stripe not connected</p>
+              <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                <div>
+                  <p className="text-sm font-semibold text-red-400">Stripe not connected</p>
+                  {stripeError && <p className="text-xs text-red-400/70 mt-1 font-mono">{stripeError}</p>}
+                </div>
               </div>
               <div className="p-4 rounded-lg bg-slate-800/60 border border-slate-700/50 text-xs text-slate-500 space-y-2">
                 <p className="font-semibold text-slate-300">To enable live invoicing &amp; payments:</p>
@@ -261,29 +276,46 @@ function SettingsPage() {
         {/* Pipeline Config */}
         <PipelineConfigCard />
 
-        {/* Acquisition Flow Reference */}
+        {/* Acquisition Flow Reference — click any stage to run that agent in batch mode */}
         <div className="p-6 rounded-xl bg-slate-900/50 border border-slate-800">
-          <h2 className="text-lg font-semibold text-white mb-4">Acquisition Flow Reference</h2>
+          <h2 className="text-lg font-semibold text-white mb-1">Acquisition Flow</h2>
+          <p className="text-xs text-slate-500 mb-4">Click a stage to run that agent now, using the config above.</p>
           <div className="space-y-2">
             {[
-              { step: '01', name: 'Lead Discovery', desc: 'Pull bridge lenders from Google Maps & directories' },
-              { step: '02', name: 'Scoring', desc: 'Score on digital visibility, SEO gaps, and ad activity' },
-              { step: '03', name: 'Asset Generation', desc: 'Build audit report + custom preview website' },
-              { step: '04', name: 'Outreach', desc: 'Send value-first email with assets attached' },
-              { step: '05', name: 'Invoicing', desc: 'Auto-invoice on "yes" — $4,997 Growth Package' },
-              { step: '06', name: 'Repurposing', desc: 'Re-use assets for next prospect if no reply in 48h' },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/40 border border-slate-700/40"
-              >
-                <span className="text-[10px] font-bold text-teal-500 w-6 flex-shrink-0">{item.step}</span>
-                <div>
-                  <p className="text-sm font-medium text-slate-200">{item.name}</p>
-                  <p className="text-xs text-slate-500">{item.desc}</p>
-                </div>
-              </div>
-            ))}
+              { step: '01', name: 'Lead Discovery', desc: 'Pull businesses from Google Maps (AI fallback), using your Niche & Region above' },
+              { step: '02', name: 'Scoring', desc: 'Score every unscored lead on real digital-presence signals' },
+              { step: '03', name: 'Asset Generation', desc: 'Build the audit report + custom preview website' },
+              { step: '04', name: 'Outreach', desc: 'Send value-first email to every verified, audited lead' },
+              { step: '05', name: 'Invoicing', desc: 'Send a real Stripe invoice to every verified, qualified lead' },
+              { step: '06', name: 'Repurposing', desc: 'Manual — mark a specific stale lead lost from the Leads page' },
+            ].map((item) => {
+              const isRunning = agentRuns?.some(r => r.agentName === item.name && r.status === 'running')
+              const disabled = item.name === 'Repurposing' || isRunning || startAgent.isPending
+              return (
+                <button
+                  key={item.step}
+                  type="button"
+                  disabled={disabled}
+                  onClick={async () => {
+                    try {
+                      const config = loadPipelineConfig()
+                      await startAgent.mutateAsync({ agentName: item.name, niche: config.niche, location: config.regionFocus })
+                      toast.success(`${item.name} started`)
+                    } catch {
+                      toast.error(`Failed to start ${item.name}`)
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg bg-slate-800/40 border border-slate-700/40 text-left transition-colors enabled:hover:bg-slate-800 enabled:hover:border-teal-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="text-[10px] font-bold text-teal-500 w-6 flex-shrink-0">{item.step}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-slate-200">{item.name}</p>
+                    <p className="text-xs text-slate-500">{item.desc}</p>
+                  </div>
+                  {isRunning ? <Loader2 className="w-4 h-4 text-teal-400 animate-spin flex-shrink-0" /> : null}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -351,11 +383,7 @@ function PipelineConfigCard() {
             onChange={(e) => setConfig(c => ({ ...c, regionFocus: e.target.value }))}
             className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm"
           >
-            <option>Southern California</option>
-            <option>Northern California</option>
-            <option>Florida</option>
-            <option>Texas</option>
-            <option>Arizona</option>
+            {REGION_OPTIONS.map(r => <option key={r}>{r}</option>)}
           </select>
         </div>
         <div>
