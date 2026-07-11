@@ -3,7 +3,7 @@
  * Provides high-level overview of the acquisition pipeline
  */
 
-import { TrendingUp, Users, DollarSign, ArrowUpRight, Play, Clock, CheckCircle2, Target, Sparkles, Loader2, Search as SearchIcon, Receipt, RefreshCw, Send } from 'lucide-react';
+import { TrendingUp, Users, DollarSign, ArrowUpRight, Play, Clock, CheckCircle2, Target, Sparkles, Loader2, Search as SearchIcon, Receipt, RefreshCw, Send, Flame } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -244,6 +244,7 @@ export function PipelineDashboard({ onNavigate }: { onNavigate: (view: string) =
           </CardHeader>
           <CardContent className="space-y-3">
             <AgentActionButton name="Lead Discovery" icon={<SearchIcon className="w-4 h-4 text-teal-400" />} />
+            <AgentActionButton name="Intent Discovery" icon={<Flame className="w-4 h-4 text-orange-400" />} />
             <AgentActionButton name="Scoring" icon={<Target className="w-4 h-4 text-amber-400" />} />
             <AgentActionButton name="Asset Generation" icon={<Sparkles className="w-4 h-4 text-emerald-400" />} />
             <AgentActionButton name="Outreach" icon={<Send className="w-4 h-4 text-blue-400" />} />

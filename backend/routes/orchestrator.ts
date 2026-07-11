@@ -3,6 +3,7 @@ import { createClient } from "@blinkdotnew/sdk";
 import { generateAIContent, generateStructuredContent } from "../lib/ai";
 import { sendEmail, buildOutreachEmail } from "../lib/email";
 import { discoverLeadsFromMaps, discoverLeadsViaAI, scoreLeadFromPresence } from "../lib/maps";
+import { discoverIntentLeads } from "../lib/intentDiscovery";
 import { findOrCreateCustomer, createAndFinalizeInvoice } from "../lib/stripeInvoice";
 import { BACKEND_URL } from "../lib/config";
 
@@ -49,6 +50,37 @@ export async function runOrchestration(
         created++;
       }
       await updateRun("success", 100, `${source}: ${created} new lead(s) added. Query: "${niche}" in "${location}".`);
+      return;
+    }
+
+    // ─── Intent Discovery (warm, real purchase-intent leads from public posts) ─
+    if (agentName === "Intent Discovery") {
+      const niche = body.niche || "commercial bridge lender";
+      if (!env.TAVILY_API_KEY && !env.EXA_API_KEY) {
+        await updateRun("failed", 0, "add TAVILY_API_KEY to enable Intent Discovery (EXA_API_KEY also accepted as an alternative).");
+        return;
+      }
+      await updateRun("running", 10, `Deriving intent search phrases for "${niche}"...`);
+      const existingUrls = await fetchExistingIntentUrls(blink);
+      const { candidates, diagnostic } = await discoverIntentLeads(env, niche, existingUrls, (msg) => {
+        updateRun("running", 40, msg).catch(() => {});
+      });
+      if (candidates.length === 0) {
+        await updateRun("failed", 0, diagnostic || `No qualifying purchase-intent posts found for "${niche}".`);
+        return;
+      }
+      await updateRun("running", 80, `Found ${candidates.length} real purchase-intent post(s). Creating leads...`);
+      let created = 0;
+      for (const c of candidates) {
+        await blink.db.leads.create({
+          id: crypto.randomUUID(), companyName: c.companyName, website: "", phone: "", contactEmail: "", contactName: "",
+          source: "Intent Discovery", dataSource: "intent", niche, location: "", status: "new",
+          leadScore: c.intentScore, consentObtained: 0,
+          intentUrl: c.intentUrl, intentContext: c.intentContext, intentScore: c.intentScore,
+        });
+        created++;
+      }
+      await updateRun("success", 100, `Intent Discovery: ${created} warm lead(s) added from real public posts for "${niche}".`);
       return;
     }
 
@@ -247,8 +279,21 @@ async function fetchExistingCompanyNames(blink: any): Promise<Set<string>> {
   return new Set(leads.map((l: any) => (l.companyName || "").trim().toLowerCase()).filter(Boolean));
 }
 
+/** Source URLs of leads already surfaced by Intent Discovery, so repeat runs skip posts already turned into a lead. */
+async function fetchExistingIntentUrls(blink: any): Promise<Set<string>> {
+  const leads = await blink.db.leads.list({ where: { dataSource: "intent" }, limit: 1000 }) as any[];
+  return new Set(leads.map((l: any) => l.intentUrl).filter(Boolean));
+}
+
 async function scoreLead(blink: any, lead: any, growthPackagePrice: number) {
-  const { overallScore, conversionLikelihood, issues } = scoreLeadFromPresence({ website: lead.website, phone: lead.phone });
+  // Intent-sourced leads already carry a meaningful score from Intent Discovery
+  // (real expressed purchase intent) — recomputing from presence signals would
+  // just clobber it with a generic low score, since these leads have no
+  // website/phone on file by design (we only have the post, not a business profile).
+  const isIntentLead = lead.dataSource === "intent" && typeof lead.intentScore === "number";
+  const { overallScore, conversionLikelihood, issues } = isIntentLead
+    ? { overallScore: lead.intentScore, conversionLikelihood: lead.intentScore, issues: [`Expressed purchase intent: "${lead.intentContext || ""}"`] }
+    : scoreLeadFromPresence({ website: lead.website, phone: lead.phone });
   const issuesJson = JSON.stringify(issues);
   const existing = await blink.db.leadScores.list({ where: { leadId: lead.id }, limit: 1 }) as any[];
   if (existing.length > 0) {
@@ -260,7 +305,12 @@ async function scoreLead(blink: any, lead: any, growthPackagePrice: number) {
 }
 
 async function runOutreachForLead(blink: any, env: Record<string, string>, lead: any, hasEmailProvider: boolean): Promise<boolean> {
-  const emailBody = await generateAIContent(env, `Write a 4-sentence cold outreach email for ${lead.companyName} (${lead.contactName || "decision maker"}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`);
+  // Intent-sourced leads get a warm reference to the actual post they wrote, instead
+  // of a cold "we built you a preview" pitch — that's the whole point of this source.
+  const prompt = lead.dataSource === "intent" && lead.intentContext
+    ? `Write a 4-sentence warm outreach email for ${lead.companyName} (${lead.contactName || "there"}). They recently posted publicly: "${lead.intentContext}". Open by naturally referencing that you saw their post (don't be creepy/stalker-ish about it — light touch), briefly mention you help ${lead.niche || "businesses like theirs"} with exactly that problem, offer a no-pressure look at what you'd suggest, end with a low-pressure yes/no question. Conversational, not salesy.`
+    : `Write a 4-sentence cold outreach email for ${lead.companyName} (${lead.contactName || "decision maker"}). Mention you built them a preview website, reference SEO gaps, offer no-pressure view, end with yes/no question. Conversational.`;
+  const emailBody = await generateAIContent(env, prompt);
   const existingSeq = await blink.db.outreachSequences.list({ where: { leadId: lead.id }, limit: 1 }) as any[];
   let sequenceId: string;
   let step: number;

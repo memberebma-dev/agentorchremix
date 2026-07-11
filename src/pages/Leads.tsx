@@ -36,7 +36,8 @@ import {
   Receipt,
   Send,
   Target,
-  AlertTriangle
+  AlertTriangle,
+  Flame
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { LeadStatus } from '@/types/pipeline'
@@ -334,6 +335,11 @@ export function LeadsPage() {
                             <AlertTriangle className="w-2.5 h-2.5" /> Unverified — AI-estimated
                           </Badge>
                         )}
+                        {lead.dataSource === 'intent' && (
+                          <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/20 text-[10px] gap-1" title={lead.intentContext}>
+                            <Flame className="w-2.5 h-2.5" /> Intent
+                          </Badge>
+                        )}
                       </div>
                       <a
                         href={lead.website}
@@ -537,6 +543,19 @@ export function LeadsPage() {
                     </div>
                   )}
                 </div>
+                {selectedLead.dataSource === 'intent' && selectedLead.intentContext && (
+                  <div className="p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
+                    <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <Flame className="w-3 h-3" /> Real Purchase-Intent Signal ({selectedLead.intentScore}/100)
+                    </p>
+                    <p className="text-xs text-slate-300 italic">"{selectedLead.intentContext}"</p>
+                    {selectedLead.intentUrl && (
+                      <a href={selectedLead.intentUrl} target="_blank" rel="noreferrer" className="text-xs text-orange-400 hover:underline flex items-center gap-1 mt-2">
+                        View original post <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                )}
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Contact Info</p>
                   <p className="text-sm font-medium text-slate-200">{selectedLead.contactName}</p>

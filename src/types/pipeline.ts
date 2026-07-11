@@ -7,13 +7,19 @@ export interface Lead {
   contactName: string
   phone: string
   source: string
-  /** How this lead's contact data was sourced. 'ai_estimated' means an LLM guessed it and it is NOT verified accurate. */
-  dataSource?: 'google_maps' | 'ai_estimated' | 'manual'
+  /** How this lead's contact data was sourced. 'ai_estimated' means an LLM guessed it and it is NOT verified accurate. 'intent' means it was surfaced by Intent Discovery from a real public post expressing purchase intent. */
+  dataSource?: 'google_maps' | 'ai_estimated' | 'manual' | 'intent'
   /** Affiliate referral code this lead should be credited to on payment, if any. */
   referralCode?: string
   niche?: string
   location?: string
   leadScore?: number
+  /** Intent Discovery only: source URL of the public post that surfaced this lead. */
+  intentUrl?: string
+  /** Intent Discovery only: quoted excerpt expressing the pain point/purchase intent. */
+  intentContext?: string
+  /** Intent Discovery only: 0-100 AI-assessed intent strength. */
+  intentScore?: number
   status: LeadStatus
   /** 0/1. Whether a human has explicitly verified this lead for autonomous outreach/invoicing — never auto-set to true. */
   consentObtained: number
