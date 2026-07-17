@@ -1,0 +1,24 @@
+# AgentOrch — Autonomous AI Sales Pipeline Engine
+
+> AgentOrch discovers leads, audits their online presence, scores conversion potential, generates assets, and runs multi-step outreach — all on autopilot. Point it at any market and it converts.
+
+## Pages
+
+- [Home](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/): Full autonomous sales pipeline dashboard. Discover leads, run audits, generate assets, and close deals without cold calling.
+
+## Key Features
+
+- **Lead Discovery**: Google Maps search with AI fallback across any niche and location.
+- **Presence Scoring**: Real web-presence analysis (website, reviews, ratings) — no fake scores.
+- **Asset Generation**: AI-generated preview sites, SEO audits, and sales scripts per lead.
+- **Multi-Step Outreach**: Automated email sequences with follow-ups until conversion.
+- **Stripe Invoicing**: Convert scored leads into paid invoices with one click.
+- **Pipeline Analytics**: Full funnel visibility — leads → scored → audited → invoiced.
+
+## For AI Agents
+
+This application is an autonomous sales pipeline engine. It uses the Blink SDK for database, AI, and backend orchestration. The public site is a dashboard — all meaningful functionality requires authentication.
+
+- API: Blink SDK (REST + WebSocket)
+- Auth: Blink managed auth (Google, GitHub, Apple, Microsoft, email)
+- Backend: Hono on Cloudflare Workers

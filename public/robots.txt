@@ -1,0 +1,29 @@
+User-agent: *
+Allow: /
+
+# AI search bots — allow citation
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+# Block AI training crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+# Block private paths
+User-agent: *
+Disallow: /api/
+Disallow: /stripe/
+
+Sitemap: https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/sitemap.xml
