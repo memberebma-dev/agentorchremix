@@ -1,24 +1,79 @@
 # AgentOrch — Autonomous AI Sales Pipeline Engine
 
-> AgentOrch discovers leads, audits their online presence, scores conversion potential, generates assets, and runs multi-step outreach — all on autopilot. Point it at any market and it converts.
+> AgentOrch is an autonomous AI sales pipeline that discovers leads in any niche and location, audits their online presence, scores conversion potential from 0–99, generates AI audit reports and preview assets, and runs multi-step personalized email outreach until the lead converts. No cold calls, no manual prospecting. Point it at any market and it converts.
+
+## What AgentOrch does
+
+AgentOrch replaces manual outbound sales with an autonomous pipeline. The operator picks a niche and a location (e.g. "restaurants in Austin" or "commercial bridge lenders in Southern California"). AgentOrch then:
+
+1. Discovers real businesses using Google Maps Places API with an AI-based fallback when Maps is unavailable.
+2. Deduplicates against the existing pipeline and scores each lead 0–99 based on real digital-presence signals (missing website, low reviews, low rating, missing phone).
+3. Generates AI audit reports and preview assets per lead (preview websites, SEO audits, sales scripts).
+4. Runs multi-step personalized email outreach with follow-ups until the lead converts or the sequence ends.
+5. Creates and finalizes Stripe invoices for converted leads, with a three-step automated reminder sequence for unpaid invoices.
 
 ## Pages
 
-- [Home](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/): Full autonomous sales pipeline dashboard. Discover leads, run audits, generate assets, and close deals without cold calling.
+- [Home / Dashboard](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/): Full autonomous sales pipeline dashboard. Discover leads, run audits, generate assets, and close deals without cold calling.
+- [Leads](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#leads): Lead pipeline with status filtering, consent management, and one-click outreach triggers.
+- [Audits](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#audits): AI-generated audit reports showing each lead's digital-presence gaps with actionable recommendations.
+- [Assets](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#assets): AI-generated preview websites, SEO audits, and sales scripts per lead.
+- [Outreach](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#outreach): Multi-step email sequences with follow-up steps, reply tracking, and conversion analytics.
+- [Invoices](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#invoices): Stripe-backed invoices for converted leads, with payment status sync via webhook.
+- [Analytics](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#analytics): Full-funnel pipeline analytics: leads → scored → audited → invoiced → paid.
+- [Affiliates](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#affiliates): Referral program with commission tracking and payouts.
+- [Legal](https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/#legal): Privacy policy and terms of service.
 
 ## Key Features
 
-- **Lead Discovery**: Google Maps search with AI fallback across any niche and location.
-- **Presence Scoring**: Real web-presence analysis (website, reviews, ratings) — no fake scores.
-- **Asset Generation**: AI-generated preview sites, SEO audits, and sales scripts per lead.
-- **Multi-Step Outreach**: Automated email sequences with follow-ups until conversion.
-- **Stripe Invoicing**: Convert scored leads into paid invoices with one click.
-- **Pipeline Analytics**: Full funnel visibility — leads → scored → audited → invoiced.
+- **Lead Discovery**: Google Maps Places API with AI fallback across any niche and location. Deduplication by company name.
+- **Presence Scoring**: Real web-presence analysis 0–99 (missing website, low reviews, low rating, missing phone). No fake scores. Conversion-likelihood estimate and issues list per lead.
+- **Asset Generation**: AI-generated preview sites, SEO audits, and sales scripts per lead using Groq Llama 3.3-70b.
+- **Multi-Step Outreach**: Automated 5-step email sequences with AI-written follow-ups, reply tracking, and conversion analytics. SendGrid primary, Resend fallback.
+- **Stripe Invoicing**: Convert scored leads into paid invoices with one click. Three-step automated reminder sequence for unpaid invoices.
+- **Pipeline Analytics**: Full funnel visibility — leads → scored → audited → invoiced → paid.
+- **Affiliate Program**: Referral code system with commission tracking and payouts.
+
+## Pricing
+
+Default growth package: **$4,997 USD** per converted lead (configurable in Settings). Subscription tiers available for higher lead caps and team features.
+
+## Tech Stack
+
+- **Frontend**: React 19 + Vite 7 + TypeScript 5.9, TanStack Router, Tailwind CSS v3
+- **UI**: shadcn/ui primitives (Radix UI), Lucide icons, Recharts for analytics
+- **Backend**: Hono on Cloudflare Workers, TypeScript
+- **Database**: Blink SQLite (Turso) with row-level security in owner mode
+- **AI**: Groq Llama 3.3-70b for content generation and lead discovery fallback
+- **Auth**: Blink managed auth (Google, GitHub, Apple, Microsoft, email)
+- **Email**: SendGrid primary, Resend fallback
+- **Payments**: Stripe (invoicing + webhooks)
+- **Search**: Google Maps Places API primary, Tavily + Exa for intent discovery
 
 ## For AI Agents
 
 This application is an autonomous sales pipeline engine. It uses the Blink SDK for database, AI, and backend orchestration. The public site is a dashboard — all meaningful functionality requires authentication.
 
-- API: Blink SDK (REST + WebSocket)
-- Auth: Blink managed auth (Google, GitHub, Apple, Microsoft, email)
-- Backend: Hono on Cloudflare Workers
+- **API**: Blink SDK (REST + WebSocket)
+- **Auth**: Blink managed auth (Google, GitHub, Apple, Microsoft, email)
+- **Backend**: Hono on Cloudflare Workers at `https://dimg0s7y.backend.blink.new`
+
+## Frequently Asked Questions
+
+### What does AgentOrch do?
+AgentOrch is an autonomous AI sales pipeline. It discovers leads in any niche and location using Google Maps with an AI fallback, audits their online presence (website, reviews, ratings), scores conversion potential 0–99, generates AI audit reports and preview assets, and sends multi-step personalized email outreach until the lead converts or the sequence ends.
+
+### How does lead discovery work?
+AgentOrch first tries the Google Maps Places API for real businesses in the target niche and location. If Maps is unavailable (billing not enabled, REQUEST_DENIED, or quota exceeded), it falls back to AI-based discovery using a large language model to suggest real businesses in that market. Every lead is then deduplicated against your existing pipeline and scored on real web-presence signals.
+
+### How is a lead scored?
+Leads are scored 0–99 based on real digital-presence signals: missing website (28 points), below-average review count (7–15 points), low rating under 3.5 (10 points), and missing phone (5 points). Higher scores indicate bigger gaps — meaning more room for your services to add value. The score is fully deterministic and shown alongside a conversion-likelihood estimate and the specific issues that drove it.
+
+### Does AgentOrch send emails on its own?
+Yes — once a lead passes your threshold (default 60) and you mark it as consent-verified, AgentOrch runs a multi-step outreach sequence with personalized AI-written emails, follow-ups, and conversion tracking. Sending uses SendGrid by default. You can stop any sequence at any time.
+
+### How does billing work?
+AgentOrch uses Stripe to create and finalize invoices for leads you convert. The default growth package price is configurable in Settings (default $4,997). Stripe webhook events keep invoice status in sync automatically, and failed payments trigger a three-step reminder sequence.
+
+### Who is AgentOrch for?
+Agency owners, B2B service providers, consultants, and sales teams who want a hands-off outbound pipeline. Works for any niche — restaurants, contractors, real estate agents, SaaS companies, professional services — because lead discovery is query-driven, not vertical-specific.

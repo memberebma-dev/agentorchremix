@@ -11,6 +11,12 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
 # Block AI training crawlers
 User-agent: GPTBot
 Disallow: /
@@ -27,3 +33,6 @@ Disallow: /api/
 Disallow: /stripe/
 
 Sitemap: https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/sitemap.xml
+
+# AI discoverability
+# llms.txt: https://agentorch-pipeline-engine-dimg0s7y.blinkpowered.com/llms.txt
