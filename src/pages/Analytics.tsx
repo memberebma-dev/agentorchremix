@@ -6,7 +6,7 @@ import {
 import { TrendingUp, Users, Send, DollarSign, Target, Bot, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { BACKEND_URL } from '@/lib/api'
+import { BACKEND_URL, authedFetch } from '@/lib/api'
 
 interface AnalyticsSummary {
   totalLeads: number
@@ -46,7 +46,7 @@ export function AnalyticsPage() {
   const fetchAnalytics = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${BACKEND_URL}/analytics`)
+      const res = await authedFetch(`${BACKEND_URL}/analytics`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as any
       setSummary(data.summary)

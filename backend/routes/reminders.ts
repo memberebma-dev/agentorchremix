@@ -1,20 +1,27 @@
 import { Hono } from "hono";
 import { createClient } from "@blinkdotnew/sdk";
 import { sendEmail } from "../lib/email";
+import { requireUserId } from "../lib/auth";
 
 const remindersApp = new Hono<{ Bindings: Record<string, string> }>();
 
 remindersApp.post("/run", async (c) => {
   const env = c.env as Record<string, string>;
+  let userId: string;
+  try {
+    userId = await requireUserId(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 401);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   const hasEmailProvider = !!(env.SENDGRID_API_KEY || env.RESEND_API_KEY);
 
   try {
-    const openInvoices = await blink.db.invoices.list({ where: { status: "open" } }) as any[];
+    const openInvoices = await blink.db.invoices.list({ where: { userId, status: "open" } }) as any[];
     let processed = 0; let emailsSent = 0;
 
     for (const inv of openInvoices) {
-      const existing = await blink.db.invoiceReminders.list({ where: { invoiceId: inv.id } }) as any[];
+      const existing = await blink.db.invoiceReminders.list({ where: { invoiceId: inv.id, userId } }) as any[];
       const ageHours = (Date.now() - new Date(inv.createdAt).getTime()) / 3600000;
       let level = 1; let reminderType = "initial";
       if (ageHours > 168) { level = 3; reminderType = "final_notice"; }
@@ -27,11 +34,11 @@ remindersApp.post("/run", async (c) => {
       if (alreadyHandledAtLevel) continue;
 
       const reminderId = crypto.randomUUID();
-      const leads = await blink.db.leads.list({ where: { id: inv.leadId }, limit: 1 }) as any[];
+      const leads = await blink.db.leads.list({ where: { id: inv.leadId, userId }, limit: 1 }) as any[];
       const lead = leads[0];
 
       if (lead?.contactEmail && hasEmailProvider) {
-        await blink.db.invoiceReminders.create({ id: reminderId, invoiceId: inv.id, reminderType, status: "pending", escalationLevel: level });
+        await blink.db.invoiceReminders.create({ id: reminderId, userId, invoiceId: inv.id, reminderType, status: "pending", escalationLevel: level });
         const subjects: Record<number, string> = {
           1: `Invoice ready — $${Number(inv.amount).toLocaleString()} | ${lead.companyName}`,
           2: `Follow-up: Outstanding invoice for ${lead.companyName}`,
@@ -48,7 +55,7 @@ remindersApp.post("/run", async (c) => {
       } else {
         // No usable email path — record it as skipped so it doesn't get re-attempted
         // every run, but don't count it as processed/sent activity.
-        await blink.db.invoiceReminders.create({ id: reminderId, invoiceId: inv.id, reminderType, status: "skipped", escalationLevel: level });
+        await blink.db.invoiceReminders.create({ id: reminderId, userId, invoiceId: inv.id, reminderType, status: "skipped", escalationLevel: level });
         continue;
       }
       processed++;
@@ -61,9 +68,15 @@ remindersApp.post("/run", async (c) => {
 
 remindersApp.get("/", async (c) => {
   const env = c.env as Record<string, string>;
+  let userId: string;
+  try {
+    userId = await requireUserId(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 401);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
-    const reminders = await blink.db.invoiceReminders.list({ orderBy: { createdAt: "desc" }, limit: 100 });
+    const reminders = await blink.db.invoiceReminders.list({ where: { userId }, orderBy: { createdAt: "desc" }, limit: 100 });
     return c.json(reminders);
   } catch (e: any) {
     return c.json({ error: e.message }, 500);

@@ -4,6 +4,7 @@ import { createClient } from "@blinkdotnew/sdk";
 import { runOrchestration } from "./routes/orchestrator";
 import { generateAIContent } from "./lib/ai";
 import { sendEmail, buildOutreachEmail } from "./lib/email";
+import { requireUserId } from "./lib/auth";
 import analyticsApp from "./routes/analytics";
 import affiliatesApp from "./routes/affiliates";
 import remindersApp from "./routes/reminders";
@@ -15,6 +16,14 @@ app.use("*", cors());
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 app.all("/orchestrator", async (c) => {
+  const env = c.env as Record<string, string>;
+  let userId: string;
+  try {
+    userId = await requireUserId(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 401);
+  }
+
   let body: any;
   try {
     body = await c.req.json();
@@ -22,7 +31,7 @@ app.all("/orchestrator", async (c) => {
     return c.json({ success: false, error: `Invalid request body: ${e.message}` }, 400);
   }
 
-  const run = runOrchestration(c.env as Record<string, string>, body).catch(console.error);
+  const run = runOrchestration(env, userId, body).catch(console.error);
   // waitUntil keeps the run alive past this response on runtimes that support it.
   // Guard it — if executionCtx isn't populated by the host runtime, don't let that
   // throw and fail the whole request; the promise still runs regardless.
@@ -37,6 +46,12 @@ app.all("/orchestrator", async (c) => {
 // ─── Smart Follow-up ──────────────────────────────────────────────────────────
 app.post("/smart-followup", async (c) => {
   const env = c.env as Record<string, string>;
+  let userId: string;
+  try {
+    userId = await requireUserId(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 401);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   const body = await c.req.json().catch(() => ({} as any));
   const windowHours = Number(body?.windowHours) > 0 ? Number(body.windowHours) : 24;
@@ -45,7 +60,7 @@ app.post("/smart-followup", async (c) => {
   const hasEmailProvider = !!(env.SENDGRID_API_KEY || env.RESEND_API_KEY);
 
   try {
-    const sequences = await blink.db.outreachSequences.list({ where: { status: "sent" }, limit: 50 }) as any[];
+    const sequences = await blink.db.outreachSequences.list({ where: { userId, status: "sent" }, limit: 50 }) as any[];
     let advanced = 0, emailed = 0;
 
     for (const seq of sequences) {
@@ -53,11 +68,11 @@ app.post("/smart-followup", async (c) => {
       const hoursAgo = (Date.now() - new Date(seq.lastSentAt || seq.createdAt).getTime()) / 3600000;
       if (hoursAgo < windowHours) continue;
 
-      const scores = await blink.db.leadScores.list({ where: { leadId: seq.leadId }, limit: 1 }) as any[];
+      const scores = await blink.db.leadScores.list({ where: { leadId: seq.leadId, userId }, limit: 1 }) as any[];
       const score = scores[0]?.overallScore || 50;
 
       if (score >= threshold) {
-        const leads = await blink.db.leads.list({ where: { id: seq.leadId }, limit: 1 }) as any[];
+        const leads = await blink.db.leads.list({ where: { id: seq.leadId, userId }, limit: 1 }) as any[];
         const lead = leads[0];
         if (!lead || !lead.consentObtained) { continue; } // never auto-email unverified leads
         const nextStep = seq.step + 1;
@@ -69,7 +84,7 @@ app.post("/smart-followup", async (c) => {
           if (emailSent) emailed++;
         }
         await blink.db.outreachAnalytics.create({
-          id: crypto.randomUUID(), sequenceId: seq.id, leadId: seq.leadId,
+          id: crypto.randomUUID(), userId, sequenceId: seq.id, leadId: seq.leadId,
           step: nextStep, eventType: "sent",
           metadata: JSON.stringify({ followUp: true, score, emailSent }),
         });

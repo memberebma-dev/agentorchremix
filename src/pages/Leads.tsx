@@ -43,12 +43,14 @@ import { toast } from 'sonner'
 import { LeadStatus } from '@/types/pipeline'
 import { blink } from '@/lib/blink'
 import { useQueryClient } from '@tanstack/react-query'
+import { useBlinkAuth } from '@blinkdotnew/react'
 
 export function LeadsPage() {
   const { data: leads, isLoading } = useLeads()
   const updateStatus = useUpdateLeadStatus()
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
+  const { user } = useBlinkAuth()
   const [searchTerm, setSearchFiltered] = useState('')
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -75,6 +77,7 @@ export function LeadsPage() {
     try {
       await blink.db.leads.create({
         id: crypto.randomUUID(),
+        userId: user?.id,
         companyName: newLead.companyName,
         website: newLead.website,
         contactEmail: newLead.contactEmail,

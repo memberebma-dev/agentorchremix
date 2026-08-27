@@ -1,10 +1,16 @@
 import { Hono } from "hono";
 import { createClient } from "@blinkdotnew/sdk";
+import { requireOwner } from "../lib/auth";
 
 const affiliatesApp = new Hono<{ Bindings: Record<string, string> }>();
 
 affiliatesApp.get("/", async (c) => {
   const env = c.env as Record<string, string>;
+  try {
+    await requireOwner(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
     const affiliates = await blink.db.affiliates.list({ orderBy: { createdAt: "desc" }, limit: 100 });
@@ -16,6 +22,11 @@ affiliatesApp.get("/", async (c) => {
 
 affiliatesApp.post("/", async (c) => {
   const env = c.env as Record<string, string>;
+  try {
+    await requireOwner(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
     const body = await c.req.json();
@@ -34,6 +45,11 @@ affiliatesApp.post("/", async (c) => {
 
 affiliatesApp.patch("/:id/deactivate", async (c) => {
   const env = c.env as Record<string, string>;
+  try {
+    await requireOwner(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   try {
     await blink.db.affiliates.update(c.req.param("id"), { status: "inactive" });
@@ -45,6 +61,11 @@ affiliatesApp.patch("/:id/deactivate", async (c) => {
 
 affiliatesApp.delete("/:id", async (c) => {
   const env = c.env as Record<string, string>;
+  try {
+    await requireOwner(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
   const id = c.req.param("id");
   try {
@@ -93,6 +114,8 @@ export async function trackAffiliateConversion(
   return { success: true, commissionAmount };
 }
 
+// Intentionally public/unauthenticated — fired by anonymous visitors landing via an
+// affiliate referral link, not by a logged-in AgentOrch user.
 affiliatesApp.post("/track", async (c) => {
   const env = c.env as Record<string, string>;
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });

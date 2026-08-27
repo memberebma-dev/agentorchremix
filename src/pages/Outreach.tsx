@@ -33,6 +33,7 @@ import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
 import { toast } from 'sonner'
 import { blink } from '@/lib/blink'
 import { useQueryClient } from '@tanstack/react-query'
+import { useBlinkAuth } from '@blinkdotnew/react'
 
 export function OutreachPage() {
   const { data: leads } = useLeads()
@@ -40,6 +41,7 @@ export function OutreachPage() {
   const { data: agentRuns } = useAgentRuns()
   const startAgent = useStartAgent()
   const queryClient = useQueryClient()
+  const { user } = useBlinkAuth()
   const [selectedSequence, setSelectedSequence] = useState<any>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isMarkingReplied, setIsMarkingReplied] = useState(false)
@@ -92,6 +94,7 @@ export function OutreachPage() {
       await blink.db.outreachSequences.update(selectedSequence.id, { status: 'replied' })
       await blink.db.outreachAnalytics.create({
         id: crypto.randomUUID(),
+        userId: user?.id,
         sequenceId: selectedSequence.id,
         leadId: selectedSequence.leadId,
         step: selectedSequence.step,

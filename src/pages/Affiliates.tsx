@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Users, Plus, Copy, Loader2, Link2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { BACKEND_URL } from '@/lib/api'
+import { BACKEND_URL, authedFetch } from '@/lib/api'
 
 interface Affiliate {
   id: string
@@ -35,7 +35,7 @@ export function AffiliatesPage() {
   const fetchAffiliates = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${BACKEND_URL}/affiliates`)
+      const res = await authedFetch(`${BACKEND_URL}/affiliates`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as Affiliate[]
       setAffiliates(data)
@@ -52,7 +52,7 @@ export function AffiliatesPage() {
     if (!form.name || !form.email) { toast.error('Name and email required'); return }
     setIsSubmitting(true)
     try {
-      const res = await fetch(`${BACKEND_URL}/affiliates`, {
+      const res = await authedFetch(`${BACKEND_URL}/affiliates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -72,7 +72,7 @@ export function AffiliatesPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Permanently delete ${name} and their referral history? This cannot be undone.`)) return
     try {
-      const res = await fetch(`${BACKEND_URL}/affiliates/${id}`, { method: 'DELETE' })
+      const res = await authedFetch(`${BACKEND_URL}/affiliates/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       toast.success('Affiliate deleted')
       await fetchAffiliates()

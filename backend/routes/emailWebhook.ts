@@ -26,10 +26,11 @@ emailWebhookApp.post("/sendgrid", async (c) => {
       const leads = (await blink.db.leads.list({ where: { contactEmail: event.email }, limit: 1 })) as any[];
       const lead = leads[0];
       if (!lead) continue;
-      const seqs = (await blink.db.outreachSequences.list({ where: { leadId: lead.id }, limit: 1 })) as any[];
+      const seqs = (await blink.db.outreachSequences.list({ where: { leadId: lead.id, userId: lead.userId }, limit: 1 })) as any[];
       const seq = seqs[0];
       await blink.db.outreachAnalytics.create({
         id: crypto.randomUUID(),
+        userId: lead.userId,
         sequenceId: seq?.id || "",
         leadId: lead.id,
         step: seq?.step || 1,
@@ -64,10 +65,11 @@ emailWebhookApp.post("/resend", async (c) => {
     const leads = (await blink.db.leads.list({ where: { contactEmail: email }, limit: 1 })) as any[];
     const lead = leads[0];
     if (!lead) return c.json({ received: true, recorded: 0 });
-    const seqs = (await blink.db.outreachSequences.list({ where: { leadId: lead.id }, limit: 1 })) as any[];
+    const seqs = (await blink.db.outreachSequences.list({ where: { leadId: lead.id, userId: lead.userId }, limit: 1 })) as any[];
     const seq = seqs[0];
     await blink.db.outreachAnalytics.create({
       id: crypto.randomUUID(),
+      userId: lead.userId,
       sequenceId: seq?.id || "",
       leadId: lead.id,
       step: seq?.step || 1,

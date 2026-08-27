@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { createClient } from '@blinkdotnew/sdk';
 import { createAndFinalizeInvoice } from './lib/stripeInvoice';
 import { trackAffiliateConversion } from './routes/affiliates';
+import { requireUserId, requireOwner } from './lib/auth';
 
 const stripeApp = new Hono<{ Bindings: Record<string, string> }>();
 
@@ -14,6 +15,7 @@ const getStripe = (env: Record<string, string>) =>
 // Products-read scope. balance.retrieve() only needs basic read access, which
 // every valid secret/restricted key has, so this distinguishes "key missing"
 // from "key set but invalid/insufficient permissions" from "genuinely connected."
+// Global platform config, not tenant data — intentionally left unauthenticated.
 stripeApp.get('/status', async (c) => {
   const env = c.env as Record<string, string>;
   const configured = !!env.STRIPE_SECRET_KEY;
@@ -27,6 +29,8 @@ stripeApp.get('/status', async (c) => {
   }
 });
 
+// Public plan listing — intentionally unauthenticated, meant to be visible on a
+// pricing page even to logged-out visitors.
 stripeApp.get('/products-with-prices', async (c) => {
   try {
     const stripe = getStripe(c.env as Record<string, string>);
@@ -42,9 +46,17 @@ stripeApp.get('/products-with-prices', async (c) => {
   }
 });
 
+// Owner-only: creates a Stripe customer for AgentOrch's own ad-hoc invoicing/payment-link
+// flow (Billing page "Request Custom Invoice"/"Generate Payment Link"), not a tenant's lead.
 stripeApp.post('/create-customer', async (c) => {
+  const env = c.env as Record<string, string>;
   try {
-    const stripe = getStripe(c.env as Record<string, string>);
+    await requireOwner(env, c.req.header('Authorization') || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+  try {
+    const stripe = getStripe(env);
     const { email, name } = await c.req.json();
     const customer = await stripe.customers.create({ email, name });
     return c.json({ customerId: customer.id });
@@ -54,8 +66,14 @@ stripeApp.post('/create-customer', async (c) => {
 });
 
 stripeApp.post('/create-subscription', async (c) => {
+  const env = c.env as Record<string, string>;
   try {
-    const stripe = getStripe(c.env as Record<string, string>);
+    await requireUserId(env, c.req.header('Authorization') || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 401);
+  }
+  try {
+    const stripe = getStripe(env);
     const { customerId, priceId } = await c.req.json();
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
@@ -70,10 +88,20 @@ stripeApp.post('/create-subscription', async (c) => {
   }
 });
 
-// Hosted Stripe Checkout — the real, working way to collect payment (redirect, no card element needed)
+// Hosted Stripe Checkout — the real, working way to collect payment (redirect, no card
+// element needed). Any authenticated user can subscribe to AgentOrch itself; the
+// verified userId is stamped into the session metadata so the webhook can tie the
+// resulting subscriber record back to the right tenant account.
 stripeApp.post('/create-checkout-session', async (c) => {
+  const env = c.env as Record<string, string>;
+  let userId: string;
   try {
-    const stripe = getStripe(c.env as Record<string, string>);
+    userId = await requireUserId(env, c.req.header('Authorization') || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 401);
+  }
+  try {
+    const stripe = getStripe(env);
     const { priceId, mode, customerEmail, successUrl, cancelUrl } = await c.req.json();
     const session = await stripe.checkout.sessions.create({
       mode: mode === 'payment' ? 'payment' : 'subscription',
@@ -81,6 +109,8 @@ stripeApp.post('/create-checkout-session', async (c) => {
       customer_email: customerEmail || undefined,
       success_url: successUrl,
       cancel_url: cancelUrl,
+      metadata: { userId },
+      subscription_data: mode === 'payment' ? undefined : { metadata: { userId } },
     });
     return c.json({ url: session.url });
   } catch (error: any) {
@@ -88,9 +118,16 @@ stripeApp.post('/create-checkout-session', async (c) => {
   }
 });
 
+// Owner-only: AgentOrch's own ad-hoc payment link, not a tenant's lead invoice.
 stripeApp.post('/create-payment-link', async (c) => {
+  const env = c.env as Record<string, string>;
   try {
-    const stripe = getStripe(c.env as Record<string, string>);
+    await requireOwner(env, c.req.header('Authorization') || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+  try {
+    const stripe = getStripe(env);
     const { amount, description } = await c.req.json();
     const paymentLink = await stripe.paymentLinks.create({
       line_items: [{ price_data: { currency: 'usd', product_data: { name: description }, unit_amount: amount }, quantity: 1 }],
@@ -101,9 +138,17 @@ stripeApp.post('/create-payment-link', async (c) => {
   }
 });
 
+// Owner-only: AgentOrch's own ad-hoc invoice, not a tenant's lead invoice (those go
+// through the Invoicing agent in orchestrator.ts, scoped to that tenant already).
 stripeApp.post('/create-one-off-invoice', async (c) => {
+  const env = c.env as Record<string, string>;
+  let ownerId: string;
   try {
-    const env = c.env as Record<string, string>;
+    ownerId = await requireOwner(env, c.req.header('Authorization') || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+  try {
     const stripe = getStripe(env);
     const { customerId, amount, description, leadId } = await c.req.json();
     const invoice = await createAndFinalizeInvoice(stripe, { customerId, amountCents: amount, description });
@@ -115,6 +160,7 @@ stripeApp.post('/create-one-off-invoice', async (c) => {
       const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
       await blink.db.invoices.create({
         id: crypto.randomUUID(),
+        userId: ownerId,
         leadId: leadId || '',
         amount: amount / 100,
         status: 'open',
@@ -150,30 +196,34 @@ stripeApp.post('/webhook', async (c) => {
       const localInvoice = matches[0];
       if (localInvoice && localInvoice.status !== 'paid') {
         await blink.db.invoices.update(localInvoice.id, { status: 'paid' });
-        await blink.db.leads.update(localInvoice.leadId, { status: 'client' });
+        if (localInvoice.leadId) {
+          await blink.db.leads.update(localInvoice.leadId, { status: 'client' });
 
-        // Credit the referring affiliate, if this lead was tagged with one.
-        const leadMatches = await blink.db.leads.list({ where: { id: localInvoice.leadId }, limit: 1 }) as any[];
-        const lead = leadMatches[0];
-        if (lead?.referralCode) {
-          const result = await trackAffiliateConversion(blink, {
-            referralCode: lead.referralCode,
-            leadId: localInvoice.leadId,
-            invoiceId: localInvoice.id,
-            amount: localInvoice.amount,
-          });
-          if (!result.success) console.error('Affiliate tracking failed:', result.error);
+          // Credit the referring affiliate, if this lead was tagged with one.
+          const leadMatches = await blink.db.leads.list({ where: { id: localInvoice.leadId }, limit: 1 }) as any[];
+          const lead = leadMatches[0];
+          if (lead?.referralCode) {
+            const result = await trackAffiliateConversion(blink, {
+              referralCode: lead.referralCode,
+              leadId: localInvoice.leadId,
+              invoiceId: localInvoice.id,
+              amount: localInvoice.amount,
+            });
+            if (!result.success) console.error('Affiliate tracking failed:', result.error);
+          }
         }
       }
     } else if (event.type === 'checkout.session.completed') {
-      // Records that a real Billing-page subscription purchase happened. Full
-      // per-tenant plan gating/dashboards is future work (not built yet) — this
-      // just makes the subscription visible/queryable instead of only existing in Stripe.
+      // Records that a real Billing-page subscription purchase happened, tied back
+      // to the tenant account that initiated checkout via session.metadata.userId
+      // (stamped in /create-checkout-session, verified server-side, never trusted
+      // from client input directly).
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === 'subscription') {
         const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
         await blink.db.subscribers.create({
           id: crypto.randomUUID(),
+          userId: session.metadata?.userId || '',
           email: session.customer_details?.email || session.customer_email || '',
           stripeCustomerId: String(session.customer || ''),
           stripeSubscriptionId: String(session.subscription || ''),

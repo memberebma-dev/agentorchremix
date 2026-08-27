@@ -7,7 +7,7 @@ import {
 import { CheckIcon, Loader2, DollarSign, Users, Receipt } from "lucide-react";
 import { toast } from 'sonner';
 import { useBlinkAuth } from '@blinkdotnew/react';
-import { BACKEND_URL } from '@/lib/api';
+import { BACKEND_URL, authedFetch } from '@/lib/api';
 import { useSubscribers, usePipelineStats, useInvoices } from '@/store/pipeline-store';
 
 interface Price {
@@ -63,7 +63,7 @@ const BillingPage: React.FC = () => {
   const handleSubscribe = async (priceId: string, interval: string) => {
     setSubscribingPriceId(priceId);
     try {
-      const res = await fetch(`${BACKEND_URL}/stripe/create-checkout-session`, {
+      const res = await authedFetch(`${BACKEND_URL}/stripe/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,7 +104,7 @@ const BillingPage: React.FC = () => {
     try {
       if (customAction === 'invoice') {
         if (!user?.email) throw new Error('No authenticated email on file');
-        const customerRes = await fetch(`${BACKEND_URL}/stripe/create-customer`, {
+        const customerRes = await authedFetch(`${BACKEND_URL}/stripe/create-customer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: user.email, name: user.email }),
@@ -112,7 +112,7 @@ const BillingPage: React.FC = () => {
         const customerData = await customerRes.json();
         if (!customerRes.ok) throw new Error(customerData.error || 'Failed to create customer');
 
-        const invoiceRes = await fetch(`${BACKEND_URL}/stripe/create-one-off-invoice`, {
+        const invoiceRes = await authedFetch(`${BACKEND_URL}/stripe/create-one-off-invoice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ customerId: customerData.customerId, amount: amountCents, description: customForm.description }),
@@ -122,7 +122,7 @@ const BillingPage: React.FC = () => {
         setResultUrl(invoiceData.hostedInvoiceUrl);
         toast.success('Invoice created and finalized in Stripe');
       } else {
-        const linkRes = await fetch(`${BACKEND_URL}/stripe/create-payment-link`, {
+        const linkRes = await authedFetch(`${BACKEND_URL}/stripe/create-payment-link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ amount: amountCents, description: customForm.description }),

@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { useInvoices, useLeads } from '@/store/pipeline-store'
-import { blink } from '@/lib/blink'
+import { useInvoices, useLeads, useInvoiceReminders as useReminders } from '@/store/pipeline-store'
 import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow
@@ -9,23 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Bell, Play, DollarSign, AlertTriangle, CheckCircle2, Clock, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BACKEND_URL } from '@/lib/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { BACKEND_URL, authedFetch } from '@/lib/api'
 import { loadPipelineConfig } from '@/lib/pipelineConfig'
-
-function useReminders() {
-  return useQuery({
-    queryKey: ['invoiceReminders'],
-    queryFn: async () => {
-      const reminders = await blink.db.invoiceReminders.list({
-        orderBy: { createdAt: 'desc' },
-        limit: 200,
-      }) as any[]
-      return reminders
-    },
-    staleTime: 30000,
-  })
-}
 
 const EscalationBadge = ({ level }: { level: number }) => {
   const configs = {
@@ -69,7 +54,7 @@ export function InvoiceRemindersPage() {
   const handleRunReminders = async () => {
     setIsRunning(true)
     try {
-      const res = await fetch(`${BACKEND_URL}/reminders/run`, { method: 'POST' })
+      const res = await authedFetch(`${BACKEND_URL}/reminders/run`, { method: 'POST' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as any
       toast.success(`Processed ${data.processed} reminders${data.emailsSent > 0 ? `, ${data.emailsSent} emails sent` : ''}`)
@@ -86,7 +71,7 @@ export function InvoiceRemindersPage() {
   const handleRunSmartFollowup = async () => {
     try {
       const config = loadPipelineConfig()
-      const res = await fetch(`${BACKEND_URL}/smart-followup`, {
+      const res = await authedFetch(`${BACKEND_URL}/smart-followup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ windowHours: config.outreachResponseWindowHours, threshold: config.leadScoreThreshold }),

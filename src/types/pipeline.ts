@@ -31,6 +31,7 @@ export type LeadStatus = 'new' | 'scored' | 'audited' | 'outreach_sent' | 'respo
 
 export interface LeadScore {
   id: string
+  userId?: string
   leadId: string
   conversionLikelihood: number
   potentialServicesValue: number
@@ -42,6 +43,7 @@ export interface LeadScore {
 
 export interface GeneratedAsset {
   id: string
+  userId?: string
   leadId: string
   type: 'audit_report' | 'custom_website'
   content?: string
@@ -51,6 +53,7 @@ export interface GeneratedAsset {
 
 export interface OutreachSequence {
   id: string
+  userId?: string
   leadId: string
   step: number
   status: 'pending' | 'sent' | 'replied' | 'dead'
@@ -63,6 +66,7 @@ export interface OutreachSequence {
 
 export interface Invoice {
   id: string
+  userId?: string
   leadId: string
   stripeInvoiceId?: string
   amount: number
@@ -72,6 +76,7 @@ export interface Invoice {
 
 export interface AgentRun {
   id: string
+  userId?: string
   agentName: string
   leadId?: string
   status: 'pending' | 'running' | 'success' | 'failed'
@@ -83,6 +88,7 @@ export interface AgentRun {
 
 export interface ActivityItem {
   id: string
+  userId?: string
   type: 'lead_added' | 'outreach_sent' | 'response_received' | 'qualified' | 'proposal_sent' | 'client_won' | 'campaign_started' | 'campaign_paused'
   message: string
   timestamp: string

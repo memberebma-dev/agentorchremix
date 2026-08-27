@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useLeads, useAgentRuns } from '@/store/pipeline-store';
+import { useBlinkAuth } from '@blinkdotnew/react';
+import { isPlatformOwner } from '@/lib/auth';
 import { 
   LayoutDashboard, 
   Users, 
@@ -34,8 +36,8 @@ const navItems = [
   { id: 'audits', label: 'Audits', icon: Search },
   { id: 'invoices', label: 'Invoices', icon: Receipt },
   { id: 'reminders', label: 'Reminders', icon: Bell },
-  { id: 'affiliates', label: 'Affiliates', icon: UserCheck },
-  { id: 'billing', label: 'Billing', icon: Zap },
+  { id: 'affiliates', label: 'Affiliates', icon: UserCheck, ownerOnly: true },
+  { id: 'billing', label: 'Billing', icon: Zap, ownerOnly: true },
   { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -44,6 +46,9 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { data: leads } = useLeads();
   const { data: agentRuns } = useAgentRuns();
+  const { user } = useBlinkAuth();
+  const isOwner = isPlatformOwner(user?.email);
+  const visibleNavItems = navItems.filter(item => !item.ownerOnly || isOwner);
   const activeLeadCount = leads?.filter(l => l.status !== 'client' && l.status !== 'lost').length ?? 0;
   const isRunning = agentRuns?.some(run => run.status === 'running');
 
@@ -78,7 +83,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="p-3 space-y-1">
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onViewChange(item.id)}

@@ -1,22 +1,29 @@
 import { Hono } from "hono";
 import { createClient } from "@blinkdotnew/sdk";
+import { requireUserId } from "../lib/auth";
 
 const analyticsApp = new Hono<{ Bindings: Record<string, string> }>();
 
 analyticsApp.get("/", async (c) => {
   const env = c.env as Record<string, string>;
+  let userId: string;
+  try {
+    userId = await requireUserId(env, c.req.header("Authorization") || null);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 401);
+  }
   const blink = createClient({ projectId: env.BLINK_PROJECT_ID, secretKey: env.BLINK_SECRET_KEY });
 
   try {
     const [totalLeads, totalOutreach, totalClients, paidInvoices, openInvoices, analyticsEvents, agentRuns] =
       await Promise.all([
-        blink.db.leads.count(),
-        blink.db.outreachSequences.count(),
-        blink.db.leads.count({ where: { status: "client" } }),
-        blink.db.invoices.list({ where: { status: "paid" } }),
-        blink.db.invoices.list({ where: { status: "open" } }),
-        blink.db.outreachAnalytics.list({ orderBy: { createdAt: "asc" }, limit: 500 }),
-        blink.db.agentRuns.list({ orderBy: { startedAt: "desc" }, limit: 100 }),
+        blink.db.leads.count({ where: { userId } }),
+        blink.db.outreachSequences.count({ where: { userId } }),
+        blink.db.leads.count({ where: { userId, status: "client" } }),
+        blink.db.invoices.list({ where: { userId, status: "paid" } }),
+        blink.db.invoices.list({ where: { userId, status: "open" } }),
+        blink.db.outreachAnalytics.list({ where: { userId }, orderBy: { createdAt: "asc" }, limit: 500 }),
+        blink.db.agentRuns.list({ where: { userId }, orderBy: { startedAt: "desc" }, limit: 100 }),
       ]);
 
     const revenue = (paidInvoices as any[]).reduce((s, i) => s + Number(i.amount), 0);
@@ -35,12 +42,12 @@ analyticsApp.get("/", async (c) => {
       dailyMap[key] = { date: key, leads: 0, outreach: 0, revenue: 0 };
     }
 
-    const allLeads = await blink.db.leads.list({ orderBy: { createdAt: "asc" }, limit: 500 });
+    const allLeads = await blink.db.leads.list({ where: { userId }, orderBy: { createdAt: "asc" }, limit: 500 });
     for (const lead of allLeads as any[]) {
       const key = new Date(lead.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (dailyMap[key]) dailyMap[key].leads++;
     }
-    const allSeqs = await blink.db.outreachSequences.list({ orderBy: { createdAt: "asc" }, limit: 500 });
+    const allSeqs = await blink.db.outreachSequences.list({ where: { userId }, orderBy: { createdAt: "asc" }, limit: 500 });
     for (const seq of allSeqs as any[]) {
       const key = new Date(seq.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (dailyMap[key]) dailyMap[key].outreach++;

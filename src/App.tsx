@@ -16,12 +16,13 @@ import { InvoiceRemindersPage } from '@/pages/InvoiceReminders'
 import { useBlinkAuth } from '@blinkdotnew/react'
 import { blink } from '@/lib/blink'
 import { Button } from '@/components/ui/button'
-import { Loader2, LogOut, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
+import { Loader2, LogOut, Zap, CheckCircle2, ExternalLink, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { BACKEND_URL } from '@/lib/api'
+import { BACKEND_URL, authedFetch } from '@/lib/api'
 import { PipelineConfig, loadPipelineConfig, savePipelineConfig, SUGGESTED_NICHES, REGION_OPTIONS } from '@/lib/pipelineConfig'
 import { useStartAgent, useAgentRuns } from '@/store/pipeline-store'
+import { isPlatformOwner } from '@/lib/auth'
 
 type PipelineView =
   | 'dashboard'
@@ -39,6 +40,20 @@ type PipelineView =
   | 'analytics'
   | 'affiliates'
   | 'reminders'
+
+function OwnerOnlyGate({ children }: { children: React.ReactNode }) {
+  const { user } = useBlinkAuth()
+  if (!isPlatformOwner(user?.email)) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <ShieldAlert className="w-10 h-10 text-slate-600 mb-4" />
+        <h2 className="text-lg font-semibold text-white">Restricted</h2>
+        <p className="text-sm text-slate-500 mt-1 max-w-sm">This page shows AgentOrch's own business data, not your pipeline — it isn't available on your account.</p>
+      </div>
+    )
+  }
+  return <>{children}</>
+}
 
 function App() {
   const { isAuthenticated, isLoading } = useBlinkAuth()
@@ -119,11 +134,11 @@ function App() {
       case 'logs': return <LogsPage />
       case 'audits': return <AuditsPage />
       case 'settings': return <SettingsPage />
-      case 'billing': return <BillingPage />
+      case 'billing': return <OwnerOnlyGate><BillingPage /></OwnerOnlyGate>
       case 'privacy': return <PrivacyPolicy />
       case 'terms': return <TermsConditions />
       case 'analytics': return <AnalyticsPage />
-      case 'affiliates': return <AffiliatesPage />
+      case 'affiliates': return <OwnerOnlyGate><AffiliatesPage /></OwnerOnlyGate>
       case 'reminders': return <InvoiceRemindersPage />
       default: return <PipelineDashboard onNavigate={setActiveView} />
     }
@@ -152,7 +167,7 @@ function SettingsPage() {
     setStripeStatus('checking')
     setStripeError(null)
     try {
-      const res = await fetch(`${BACKEND_URL}/stripe/status`)
+      const res = await authedFetch(`${BACKEND_URL}/stripe/status`)
       const data = await res.json()
       if (data.verified) {
         setStripeStatus('connected')
